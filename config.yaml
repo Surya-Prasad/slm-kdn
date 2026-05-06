@@ -1,0 +1,35 @@
+project:
+  name: SLM-driven Micro-KDN for Edge Networking Environments
+
+data:
+  dataset_name: Smarneh/NIT
+  output_dir: micro_kdn_llama/data/processed
+  test_size: 0.15
+  val_size: 0.15
+  seed: 42
+
+prompt:
+  mode: intent_with_context  # intent_only | intent_with_context
+
+training:
+  base_model: meta-llama/Meta-Llama-3-8B
+  max_seq_len: 512
+  per_device_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 0.0002
+  num_train_epochs: 3
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  output_dir: micro_kdn_llama/results/lora_adapter
+  use_4bit: true
+  bf16: false
+
+inference:
+  max_new_tokens: 64
+  temperature: 0.0
+  top_p: 1.0
+
+evaluation:
+  pred_file: micro_kdn_llama/results/predictions/predictions.jsonl
+  output_metrics: micro_kdn_llama/results/metrics/eval_metrics.json
