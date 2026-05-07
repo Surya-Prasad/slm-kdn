@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -e
-python micro_kdn_llama/src/latency_benchmark.py --input_file micro_kdn_llama/data/processed/clean_test.jsonl
+python src/latency_benchmark.py --input_file data/processed/clean_test.jsonl

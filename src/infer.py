@@ -25,4 +25,4 @@ def main(a):
         out.append({**r,'prediction':pred})
     write_jsonl(a.output_file,out)
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='micro_kdn_llama/config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); main(p.parse_args())

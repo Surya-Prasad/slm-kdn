@@ -31,4 +31,4 @@ def main(a):
     ensure_dir(a.out_dir)
     with open(a.out_file,'w') as f: json.dump(out,f,indent=2)
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='micro_kdn_llama/config.yaml'); p.add_argument('--pred_file',default='micro_kdn_llama/results/predictions/predictions.jsonl'); p.add_argument('--out_dir',default='micro_kdn_llama/results/metrics'); p.add_argument('--out_file',default='micro_kdn_llama/results/metrics/eval_metrics.json'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--pred_file',default='results/predictions/predictions.jsonl'); p.add_argument('--out_dir',default='results/metrics'); p.add_argument('--out_file',default='results/metrics/eval_metrics.json'); main(p.parse_args())

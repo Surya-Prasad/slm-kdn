@@ -5,25 +5,25 @@ Research-grade skeleton for intent-to-network-command generation with Llama-3-8B
 ## Setup
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r micro_kdn_llama/requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Pipeline
 1. Preprocess and create robustness sets:
 ```bash
-micro_kdn_llama/scripts/run_preprocess.sh
+scripts/run_preprocess.sh
 ```
 2. Train LoRA adapter:
 ```bash
-micro_kdn_llama/scripts/run_train.sh
+scripts/run_train.sh
 ```
 3. Infer + evaluate + error analysis:
 ```bash
-micro_kdn_llama/scripts/run_eval.sh
+scripts/run_eval.sh
 ```
 4. Robustness:
 ```bash
-micro_kdn_llama/scripts/run_robustness.sh
+scripts/run_robustness.sh
 ```
 
 ## Notes

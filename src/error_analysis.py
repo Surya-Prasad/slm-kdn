@@ -24,4 +24,4 @@ def main(a):
         w=csv.DictWriter(f,fieldnames=['intent','target_command','prediction','error_type']); w.writeheader();
         for r in rows: w.writerow({k:r.get(k,'') for k in w.fieldnames})
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--pred_file',required=True); p.add_argument('--out_json',default='micro_kdn_llama/results/error_analysis/error_summary.json'); p.add_argument('--out_csv',default='micro_kdn_llama/results/error_analysis/errors.csv'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--pred_file',required=True); p.add_argument('--out_json',default='results/error_analysis/error_summary.json'); p.add_argument('--out_csv',default='results/error_analysis/errors.csv'); main(p.parse_args())

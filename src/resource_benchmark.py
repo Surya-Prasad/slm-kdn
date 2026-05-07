@@ -10,4 +10,4 @@ def main(a):
     res={'model_load_time_sec':load_s,'cpu_mem_mb':(after-before)/(1024**2),'gpu_peak_bytes':gpu_peak}
     with open(a.out_file,'w') as f: json.dump(res,f,indent=2)
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--model_name',default='meta-llama/Meta-Llama-3-8B'); p.add_argument('--out_file',default='micro_kdn_llama/results/metrics/resource.json'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--model_name',default='meta-llama/Meta-Llama-3-8B'); p.add_argument('--out_file',default='results/metrics/resource.json'); main(p.parse_args())

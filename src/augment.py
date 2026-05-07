@@ -17,4 +17,4 @@ def main(a):
     write_jsonl(f"{c['data']['output_dir']}/paraphrased_test.jsonl", [{**r,"intent":paraphrase(r['intent'])} for r in rows])
     write_jsonl(f"{c['data']['output_dir']}/noisy_test.jsonl", [{**r,"intent":noisy(r['intent'])} for r in rows])
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='micro_kdn_llama/config.yaml'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); main(p.parse_args())

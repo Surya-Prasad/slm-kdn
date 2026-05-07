@@ -50,5 +50,5 @@ def main(args):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--config", default="micro_kdn_llama/config.yaml")
+    p.add_argument("--config", default="config.yaml")
     main(p.parse_args())
