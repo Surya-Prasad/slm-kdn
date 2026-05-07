@@ -3,7 +3,7 @@ project:
 
 data:
   dataset_name: Smarneh/NIT
-  output_dir: micro_kdn_llama/data/processed
+  output_dir: data/processed
   test_size: 0.15
   val_size: 0.15
   seed: 42
@@ -21,7 +21,7 @@ training:
   lora_r: 16
   lora_alpha: 32
   lora_dropout: 0.05
-  output_dir: micro_kdn_llama/results/lora_adapter
+  output_dir: results/lora_adapter
   use_4bit: true
   bf16: false
 
@@ -31,5 +31,5 @@ inference:
   top_p: 1.0
 
 evaluation:
-  pred_file: micro_kdn_llama/results/predictions/predictions.jsonl
-  output_metrics: micro_kdn_llama/results/metrics/eval_metrics.json
+  pred_file: results/predictions/predictions.jsonl
+  output_metrics: results/metrics/eval_metrics.json

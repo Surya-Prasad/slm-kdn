@@ -21,6 +21,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="micro_kdn_llama/config.yaml")
+    ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--mode", choices=["intent_only", "intent_with_context"], default=None)
     main(ap.parse_args())

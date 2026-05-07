@@ -8,7 +8,7 @@ from typing import Any, Dict, Iterable, List
 import yaml
 
 
-def load_config(path: str = "micro_kdn_llama/config.yaml") -> Dict[str, Any]:
+def load_config(path: str = "config.yaml") -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 

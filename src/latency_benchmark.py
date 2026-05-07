@@ -10,4 +10,4 @@ def main(a):
     res={'avg_latency_ms':float(np.mean(l)*1000),'p50_ms':float(np.percentile(l,50)*1000),'p95_ms':float(np.percentile(l,95)*1000)}
     with open(a.out_file,'w') as f: json.dump(res,f,indent=2)
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--input_file',required=True); p.add_argument('--num_samples',type=int,default=200); p.add_argument('--out_file',default='micro_kdn_llama/results/metrics/latency.json'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--input_file',required=True); p.add_argument('--num_samples',type=int,default=200); p.add_argument('--out_file',default='results/metrics/latency.json'); main(p.parse_args())
