@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
-
-from juniper_docs_store import JuniperDoc, retrieve_doc
+from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -71,10 +69,3 @@ _TEMPLATE_STORE: Dict[tuple[str, str], TemplateRecord] = {
 def retrieve_template(action: str, target_type: str) -> Optional[TemplateRecord]:
     key = (str(action).strip().lower(), str(target_type).strip().lower())
     return _TEMPLATE_STORE.get(key)
-
-
-def retrieve_template_with_doc(action: str, target_type: str) -> Tuple[Optional[TemplateRecord], Optional[JuniperDoc]]:
-    """Retrieve deterministic CLI template and matching Juniper doc snippet datastore entry."""
-    template_record = retrieve_template(action, target_type)
-    doc_record = retrieve_doc(action, target_type)
-    return template_record, doc_record

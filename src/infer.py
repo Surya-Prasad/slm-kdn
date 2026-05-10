@@ -8,7 +8,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from preprocess import build_prompt
-from rag_store import retrieve_template_with_doc
+from rag_store import retrieve_template
 from utils import load_config, read_jsonl, write_jsonl
 
 
@@ -61,9 +61,9 @@ def parse_semantic_json(raw: str):
 
 
 def assemble_command(parsed):
-    record, doc = retrieve_template_with_doc(parsed.get("action", ""), parsed.get("target_type", ""))
+    record = retrieve_template(parsed.get("action", ""), parsed.get("target_type", ""))
     if record is None:
-        return "", "template_not_found", None
+        return "", "template_not_found"
 
     fields = dict(record.default_params)
     fields.update(dict(parsed.get("parameters", {})))
@@ -72,12 +72,12 @@ def assemble_command(parsed):
     try:
         command = record.template.format(**fields).strip()
     except KeyError as exc:
-        return "", f"missing_template_parameter:{exc}", doc
+        return "", f"missing_template_parameter:{exc}"
 
     if record.requires_commit:
         command = f"{command}\\ncommit"
 
-    return command, None, doc
+    return command, None
 
 
 def main(a):
@@ -115,9 +115,8 @@ def main(a):
 
             assembled = ""
             assembly_error = None
-            retrieved_doc = None
             if parsed is not None:
-                assembled, assembly_error, retrieved_doc = assemble_command(parsed)
+                assembled, assembly_error = assemble_command(parsed)
 
             out.append(
                 {
@@ -127,12 +126,6 @@ def main(a):
                     "prediction": assembled,
                     "parse_error": parse_error,
                     "assembly_error": assembly_error,
-                    "retrieved_doc": None if retrieved_doc is None else {
-                        "doc_id": retrieved_doc.doc_id,
-                        "title": retrieved_doc.title,
-                        "snippet": retrieved_doc.snippet,
-                        "source_url": retrieved_doc.source_url,
-                    },
                 }
             )
 
