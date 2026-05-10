@@ -20,9 +20,15 @@ def clean(s):
     
     cmd = parts[0].strip()
     
+    # --- THE GUARDRAIL ---
+    # Define standard Juniper operational (read-only) prefixes
+    read_only_prefixes = ('show ', 'ping ', 'traceroute ', 'monitor ', 'clear ', 'request ')
+    is_read_only = cmd.lower().startswith(read_only_prefixes)
+    
     # If the model logically output 'commit' as the second command, append it exactly 
-    # as the ground-truth dataset expects it: with a literal '\n'
-    if len(parts) > 1 and parts[1].strip().lower() == 'commit':
+    # as the ground-truth dataset expects it: with a literal '\n'.
+    # BUT explicitly prevent appending to read-only operational commands.
+    if len(parts) > 1 and parts[1].strip().lower() == 'commit' and not is_read_only:
         cmd += '\\ncommit'
         
     return cmd
