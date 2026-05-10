@@ -12,9 +12,8 @@ from rag_store import retrieve_template
 from utils import load_config, read_jsonl, write_jsonl
 
 
-REQUIRED_JSON_KEYS = {"action", "target", "target_type", "parameters"}
+REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
 ALLOWED_ACTIONS = {"set", "delete", "show"}
-ALLOWED_TARGET_TYPES = {"interface", "vlan", "route"}
 
 
 def parse_semantic_json(raw: str):
@@ -41,8 +40,6 @@ def parse_semantic_json(raw: str):
 
         if parsed.get("action") not in ALLOWED_ACTIONS:
             errors.append("invalid_enum_action")
-        if parsed.get("target_type") not in ALLOWED_TARGET_TYPES:
-            errors.append("invalid_enum_target_type")
 
         params = parsed["parameters"]
         for key in ("vlan_id", "unit"):
@@ -61,13 +58,16 @@ def parse_semantic_json(raw: str):
 
 
 def assemble_command(parsed):
-    record = retrieve_template(parsed.get("action", ""), parsed.get("target_type", ""))
+    record = retrieve_template(
+        parsed.get("action", ""),
+        parsed.get("domain", ""),
+        parsed.get("sub_domain", ""),
+    )
     if record is None:
         return "", "template_not_found"
 
     fields = dict(record.default_params)
     fields.update(dict(parsed.get("parameters", {})))
-    fields["target"] = parsed.get("target", fields.get("target", ""))
 
     try:
         command = record.template.format(**fields).strip()

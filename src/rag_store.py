@@ -1,71 +1,63 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, Optional
 
 
 @dataclass(frozen=True)
 class TemplateRecord:
     action: str
-    target_type: str
+    domain: str
+    sub_domain: str
     template: str
     requires_commit: bool
     default_params: Dict[str, object] = field(default_factory=dict)
 
 
-_TEMPLATE_STORE: Dict[tuple[str, str], TemplateRecord] = {
-    ("set", "interface"): TemplateRecord(
-        action="set",
-        target_type="interface",
-        template="set interfaces {target} unit {unit} family ethernet-switching vlan members {vlan_id}",
-        requires_commit=True,
-        default_params={"unit": 0, "vlan_id": None, "target": ""},
-    ),
-    ("delete", "interface"): TemplateRecord(
-        action="delete",
-        target_type="interface",
-        template="delete interfaces {target} unit {unit} family ethernet-switching vlan members {vlan_id}",
-        requires_commit=True,
-        default_params={"unit": 0, "vlan_id": None, "target": ""},
-    ),
-    ("show", "interface"): TemplateRecord(
-        action="show",
-        target_type="interface",
-        template="show interfaces {target} terse",
-        requires_commit=False,
-        default_params={"target": ""},
-    ),
-    ("set", "vlan"): TemplateRecord(
-        action="set",
-        target_type="vlan",
-        template="set vlans {vlan_name} vlan-id {vlan_id}",
-        requires_commit=True,
-        default_params={"vlan_name": "", "vlan_id": None},
-    ),
-    ("delete", "vlan"): TemplateRecord(
-        action="delete",
-        target_type="vlan",
-        template="delete vlans {vlan_name}",
-        requires_commit=True,
-        default_params={"vlan_name": ""},
-    ),
-    ("show", "vlan"): TemplateRecord(
-        action="show",
-        target_type="vlan",
-        template="show vlans",
-        requires_commit=False,
-        default_params={},
-    ),
-    ("show", "route"): TemplateRecord(
-        action="show",
-        target_type="route",
-        template="show route {prefix}",
-        requires_commit=False,
-        default_params={"prefix": ""},
-    ),
-}
+_TEMPLATE_STORE: Dict[tuple[str, str, str], TemplateRecord] = {}
 
 
-def retrieve_template(action: str, target_type: str) -> Optional[TemplateRecord]:
-    key = (str(action).strip().lower(), str(target_type).strip().lower())
+def _normalize_key(value: str) -> str:
+    return str(value).strip().lower()
+
+
+def load_datastore(filepath: str = "data/juniper_templates.json") -> None:
+    path = Path(filepath)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    records = payload.values() if isinstance(payload, dict) else payload
+
+    store: Dict[tuple[str, str, str], TemplateRecord] = {}
+    for entry in records:
+        if not isinstance(entry, dict):
+            continue
+
+        action = _normalize_key(entry.get("action", ""))
+        domain = _normalize_key(entry.get("domain", ""))
+        sub_domain = _normalize_key(entry.get("sub_domain", ""))
+
+        if not action or not domain or not sub_domain:
+            continue
+
+        record = TemplateRecord(
+            action=action,
+            domain=domain,
+            sub_domain=sub_domain,
+            template=str(entry.get("template", "")),
+            requires_commit=bool(entry.get("requires_commit", False)),
+            default_params=dict(entry.get("default_params", {})),
+        )
+        store[(action, domain, sub_domain)] = record
+
+    _TEMPLATE_STORE.clear()
+    _TEMPLATE_STORE.update(store)
+
+
+def retrieve_template(action: str, domain: str, sub_domain: str) -> Optional[TemplateRecord]:
+    if not _TEMPLATE_STORE:
+        load_datastore()
+
+    key = (_normalize_key(action), _normalize_key(domain), _normalize_key(sub_domain))
     return _TEMPLATE_STORE.get(key)
