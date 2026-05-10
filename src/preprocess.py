@@ -2,9 +2,13 @@ import argparse
 from utils import load_config, read_jsonl, write_jsonl
 
 INSTR = (
-    "You are a network semantic parser. Convert the user intent into strict JSON only. "
-    "JSON schema: {\"action\": str, \"target\": str, \"target_type\": str, "
-    "\"parameters\": object}. Do not output explanations."
+    "You are a network semantic parser. Output ONLY valid JSON with no extra text. "
+    "Use exactly this schema and keys: "
+    "{\"action\": \"...\", \"target\": \"...\", \"target_type\": \"...\", "
+    "\"parameters\": {\"vlan_id\": null, \"vlan_name\": null, \"unit\": null, \"prefix\": null}}. "
+    "Allowed enums: action in [\"set\", \"delete\", \"show\"], "
+    "target_type in [\"interface\", \"vlan\", \"route\"]. "
+    "Do not omit any top-level key or parameter key; use null when unknown."
 )
 
 

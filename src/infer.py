@@ -1,6 +1,7 @@
 # Meant for use with an A100 (unquantized fp16 path)
 import argparse
 import json
+
 import torch
 from peft import PeftModel
 from tqdm import tqdm
@@ -12,26 +13,50 @@ from utils import load_config, read_jsonl, write_jsonl
 
 
 REQUIRED_JSON_KEYS = {"action", "target", "target_type", "parameters"}
+ALLOWED_ACTIONS = {"set", "delete", "show"}
+ALLOWED_TARGET_TYPES = {"interface", "vlan", "route"}
 
 
 def parse_semantic_json(raw: str):
-    """Parse potentially noisy model output into a semantic JSON object."""
+    """Parse potentially noisy model output into a semantic JSON object with safe type normalization."""
+    errors = []
     try:
         start = raw.find("{")
         end = raw.rfind("}")
         if start == -1 or end == -1 or end <= start:
             raise ValueError("no_json_object_found")
+
         candidate = raw[start : end + 1]
         parsed = json.loads(candidate)
+
         if not isinstance(parsed, dict):
             raise ValueError("json_not_object")
+
         missing = REQUIRED_JSON_KEYS - set(parsed.keys())
         if missing:
             raise ValueError(f"missing_keys:{','.join(sorted(missing))}")
+
         if not isinstance(parsed.get("parameters"), dict):
             raise ValueError("parameters_not_object")
-        return parsed, None
-    except Exception as exc:  # required robust boundary for hallucinated format
+
+        if parsed.get("action") not in ALLOWED_ACTIONS:
+            errors.append("invalid_enum_action")
+        if parsed.get("target_type") not in ALLOWED_TARGET_TYPES:
+            errors.append("invalid_enum_target_type")
+
+        params = parsed["parameters"]
+        for key in ("vlan_id", "unit"):
+            if key in params and params[key] is not None:
+                try:
+                    params[key] = int(params[key])
+                except (TypeError, ValueError):
+                    params[key] = None
+                    errors.append(f"invalid_type_{key}")
+
+        error_str = ";".join(errors) if errors else None
+        return parsed, error_str
+
+    except Exception as exc:  # robust boundary for hallucinated formatting
         return None, str(exc)
 
 
@@ -40,8 +65,9 @@ def assemble_command(parsed):
     if record is None:
         return "", "template_not_found"
 
-    fields = dict(parsed.get("parameters", {}))
-    fields.setdefault("target", parsed.get("target", ""))
+    fields = dict(record.default_params)
+    fields.update(dict(parsed.get("parameters", {})))
+    fields["target"] = parsed.get("target", fields.get("target", ""))
 
     try:
         command = record.template.format(**fields).strip()
@@ -71,11 +97,10 @@ def main(a):
     rows = read_jsonl(a.input_file)
     out = []
 
-    batch_size = a.batch_size
     print(f"\n[INFO] Starting BATCHED inference on {len(rows)} instances for {a.input_file.split('/')[-1]}...")
 
-    for i in tqdm(range(0, len(rows), batch_size), desc="Batches"):
-        batch_rows = rows[i : i + batch_size]
+    for i in tqdm(range(0, len(rows), a.batch_size), desc="Batches"):
+        batch_rows = rows[i : i + a.batch_size]
         prompts = [build_prompt(r["intent"], r.get("context", ""), a.mode) for r in batch_rows]
 
         inputs = tok(prompts, return_tensors="pt", padding=True).to(model.device)
