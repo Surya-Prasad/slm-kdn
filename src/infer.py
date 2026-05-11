@@ -16,6 +16,22 @@ REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
 ALLOWED_ACTIONS = {"set", "delete", "show"}
 
 
+def clean(s):
+    s = re.sub(r'^(Command:|Output:)\s*', '', s.strip(), flags=re.I)
+    s = s.replace('\n', '\\n')
+    parts = s.split('\\n')
+    if not parts:
+        return ""
+
+    cmd = parts[0].strip()
+    read_only_prefixes = ('show ', 'ping ', 'traceroute ', 'monitor ', 'clear ', 'request ')
+    is_read_only = cmd.lower().startswith(read_only_prefixes)
+    if len(parts) > 1 and parts[1].strip().lower() == 'commit' and not is_read_only:
+        cmd += '\\ncommit'
+
+    return cmd
+
+
 def parse_semantic_json(raw: str):
     """Parse potentially noisy model output into a semantic JSON object with safe type normalization."""
     errors = []
