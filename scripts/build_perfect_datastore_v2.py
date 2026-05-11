@@ -68,6 +68,36 @@ def valid_key_fields(action: str, domain: str, sub_domain: str, body: str) -> bo
     return True
 
 
+def operation_cues(operation: str) -> tuple[list[str], list[str]]:
+    positive = {
+        "traceoptions_flag_enable": ["trace", "traceoptions", "flag"],
+        "traceoptions_flag_disable": ["disable", "traceoptions", "flag"],
+        "interface_enable": ["interface"],
+        "sample_rate_ingress": ["sample-rate", "ingress"],
+        "sample_rate_egress": ["sample-rate", "egress"],
+        "polling_interval": ["polling interval", "polling-interval"],
+        "mac_move_limit": ["mac moving limit", "mac-move-limit"],
+        "mac_limit_action_log": ["mac limit", "action log"],
+        "arp_inspection": ["arp inspection"],
+        "dhcp_trusted": ["dhcp trusted", "trusted dhcp"],
+        "no_examine_dhcp": ["no-examine-dhcp"],
+        "lcd_menu": ["lcd", "menu"],
+        "clear_table": ["clear", "ethernet-switching-table"],
+    }.get(operation, [operation.replace("_", " ")])
+    negative = []
+    if operation != "traceoptions_flag_disable":
+        negative.append("disable")
+    if operation != "no_examine_dhcp":
+        negative.append("no-examine-dhcp")
+    if operation != "mac_move_limit":
+        negative.append("mac-move-limit")
+    return positive, negative
+
+
+def placeholders(template: str) -> list[str]:
+    return sorted(set(re.findall(r"{([A-Za-z_][A-Za-z0-9_]*)}", template)))
+
+
 def parameterize(body: str) -> tuple[str, list[str]]:
     params = []
     template = body
@@ -145,7 +175,10 @@ def main(args):
             mode = infer_mode(action)
             requires_commit = infer_requires_commit(action, mode, had_commit)
             template, allowed_params = parameterize(variant_body)
-            key = f"{action}/{domain}/{sub_domain}/{variant}"
+            operation = str(frame.get("operation", "general") or "general")
+            positive_cues, negative_cues = operation_cues(operation)
+            required_params = placeholders(template)
+            key = f"{action}/{domain}/{sub_domain}/{operation}/{variant}"
             public_key = f"{action}/{domain}/{sub_domain}"
             record = {
                 "action": action,
@@ -156,8 +189,13 @@ def main(args):
                 "requires_commit": requires_commit,
                 "default_params": {},
                 "allowed_params": sorted(set(allowed_params) | set(frame.get("parameters", {}).keys())),
+                "required_params": required_params,
+                "forbidden_params": [],
                 "description": f"Template inferred from {row.get('_source_file', 'processed data')}",
                 "intent_examples": [],
+                "operation": operation,
+                "positive_cues": positive_cues,
+                "negative_cues": negative_cues,
                 "negative_rules": [
                     "never_append_commit_for_operational_mode",
                     "commit_required_only_when_requires_commit_true",

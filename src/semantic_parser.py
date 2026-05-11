@@ -46,6 +46,44 @@ KNOWN_DOMAINS = {
 KNOWN_MULTI_TOKEN_DOMAINS = {"ethernet switching"}
 
 
+def infer_operation(text: str, action: str = "", domain: str = "", sub_domain: str = "") -> str:
+    q = str(text or "").lower().replace("_", "-")
+    q = re.sub(r"\s+", " ", q)
+    if "traceoptions" in q and "flag" in q:
+        if re.search(r"\b(disable|deactivate|turn off|stop)\b", q):
+            return "traceoptions_flag_disable"
+        return "traceoptions_flag_enable"
+    if "sflow" in q and re.search(r"\binterface\s+[a-z]{2}-\d+/\d+/\d+\b", q):
+        return "interface_enable"
+    if "sample-rate" in q and "ingress" in q:
+        return "sample_rate_ingress"
+    if "sample-rate" in q and "egress" in q:
+        return "sample_rate_egress"
+    if "polling interval" in q or "polling-interval" in q:
+        return "polling_interval"
+    if "mac moving limit" in q or "mac-move-limit" in q:
+        return "mac_move_limit"
+    if "mac limit" in q and "action log" in q:
+        return "mac_limit_action_log"
+    if "arp inspection" in q:
+        return "arp_inspection"
+    if "dhcp trusted" in q or "trusted dhcp" in q:
+        return "dhcp_trusted"
+    if "no-examine-dhcp" in q:
+        return "no_examine_dhcp"
+    if "lcd" in q and ("menu" in q or "active menu" in q):
+        return "lcd_menu"
+    if "clear ethernet-switching-table" in q or ("clear" in q and "ethernet-switching-table" in q):
+        return "clear_table"
+    if "disable" in q:
+        return "disable"
+    if "enable" in q:
+        return "enable"
+    if action and domain and sub_domain:
+        return "_".join(part for part in (action, domain, sub_domain) if part).replace("-", "_").replace("/", "_")
+    return "general"
+
+
 def semantic_prompt(intent: str, context: str = "") -> str:
     return (
         "You are a semantic intent parser for Juniper Junos intents.\n"
@@ -211,6 +249,14 @@ def _repair_full_command_action(parsed: Dict[str, Any], warnings: list[str]) -> 
     merged_params = dict(command_params)
     merged_params.update(params)
     repaired["parameters"] = merged_params
+    if not str(repaired.get("operation", "")).strip():
+        repaired["operation"] = infer_operation(
+            raw_action,
+            current_action,
+            str(repaired.get("domain", "")),
+            str(repaired.get("sub_domain", "")),
+        )
+        warnings.append("inferred_operation")
     return repaired
 
 
@@ -229,6 +275,7 @@ def command_to_semantic_frame(command: str) -> Dict[str, Any]:
             "domain": domain,
             "sub_domain": sub_domain,
             "parameters": _extract_command_parameters(body),
+            "operation": infer_operation(body, action, domain, sub_domain),
         },
         [],
     )
@@ -258,6 +305,25 @@ def normalize_semantic_frame(parsed: Dict[str, Any], warnings: Optional[list[str
             if re.fullmatch(r"\d+", text):
                 params[key] = int(text)
     normalized["parameters"] = params
+    raw_operation = str(normalized.get("operation", "")).strip()
+    operation = raw_operation.lower().replace("-", "_")
+    if not operation:
+        operation = infer_operation(
+            " ".join(
+                str(part)
+                for part in (
+                    normalized.get("action", ""),
+                    normalized.get("domain", ""),
+                    normalized.get("sub_domain", ""),
+                    " ".join(str(v) for v in params.values()),
+                )
+            ),
+            normalized.get("action", ""),
+            normalized.get("domain", ""),
+            normalized.get("sub_domain", ""),
+        )
+        warnings.append("inferred_operation")
+    normalized["operation"] = operation
     if warnings:
         normalized["_parse_warnings"] = list(dict.fromkeys(warnings))
     return normalized

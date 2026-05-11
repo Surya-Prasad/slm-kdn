@@ -21,6 +21,11 @@ class TemplateRecord:
     negative_rules: List[str] = field(default_factory=list)
     validation_rules: Dict[str, object] = field(default_factory=dict)
     variant: str = "plain"
+    operation: str = "general"
+    positive_cues: List[str] = field(default_factory=list)
+    negative_cues: List[str] = field(default_factory=list)
+    required_params: List[str] = field(default_factory=list)
+    forbidden_params: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -37,10 +42,15 @@ class TemplateRecord:
             "negative_rules": list(self.negative_rules),
             "validation_rules": dict(self.validation_rules),
             "variant": self.variant,
+            "operation": self.operation,
+            "positive_cues": list(self.positive_cues),
+            "negative_cues": list(self.negative_cues),
+            "required_params": list(self.required_params),
+            "forbidden_params": list(self.forbidden_params),
         }
 
 
-_TEMPLATE_STORE: Dict[tuple[str, str, str, str], TemplateRecord] = {}
+_TEMPLATE_STORE: Dict[tuple[str, str, str, str, str], TemplateRecord] = {}
 
 OPERATIONAL_ACTIONS = {"show", "clear", "request", "ping", "traceroute", "monitor"}
 CONFIGURATION_ACTIONS = {"set", "delete", "load"}
@@ -79,7 +89,7 @@ def load_datastore(filepath: str = "data/juniper_templates.json") -> None:
 
     records = payload.items() if isinstance(payload, dict) else [(None, item) for item in payload]
 
-    store: Dict[tuple[str, str, str, str], TemplateRecord] = {}
+    store: Dict[tuple[str, str, str, str, str], TemplateRecord] = {}
     for raw_key, entry in records:
         if not isinstance(entry, dict):
             continue
@@ -110,8 +120,13 @@ def load_datastore(filepath: str = "data/juniper_templates.json") -> None:
             negative_rules=list(entry.get("negative_rules", [])),
             validation_rules=dict(entry.get("validation_rules", {})),
             variant=str(entry.get("variant", "plain") or "plain"),
+            operation=str(entry.get("operation", "general") or "general"),
+            positive_cues=list(entry.get("positive_cues", [])),
+            negative_cues=list(entry.get("negative_cues", [])),
+            required_params=list(entry.get("required_params", [])),
+            forbidden_params=list(entry.get("forbidden_params", [])),
         )
-        store[(action, domain, sub_domain, record.variant)] = record
+        store[(action, domain, sub_domain, record.operation, record.variant)] = record
 
     _TEMPLATE_STORE.clear()
     _TEMPLATE_STORE.update(store)
@@ -121,11 +136,11 @@ def retrieve_template(action: str, domain: str, sub_domain: str) -> Optional[Tem
     if not _TEMPLATE_STORE:
         load_datastore()
 
-    key = (_normalize_key(action), _normalize_key(domain), _normalize_key(sub_domain), "plain")
+    key = (_normalize_key(action), _normalize_key(domain), _normalize_key(sub_domain), "general", "plain")
     if key in _TEMPLATE_STORE:
         return _TEMPLATE_STORE[key]
     matches = [
-        record for (a, d, s, _), record in _TEMPLATE_STORE.items()
+        record for (a, d, s, _, _), record in _TEMPLATE_STORE.items()
         if (a, d, s) == key[:3]
     ]
     return matches[0] if len(matches) == 1 else None

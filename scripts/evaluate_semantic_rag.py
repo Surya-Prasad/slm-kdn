@@ -13,7 +13,8 @@ for path in (SRC, SCRIPTS):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from build_perfect_datastore_v2 import infer_domain_subdomain, split_commit  # noqa: E402
+from build_perfect_datastore_v2 import command_variant, infer_domain_subdomain, split_commit  # noqa: E402
+from semantic_parser import command_to_semantic_frame  # noqa: E402
 from utils import normalize_command, read_jsonl, tokenize  # noqa: E402
 from validate_output import extract_entities, validate  # noqa: E402
 
@@ -43,11 +44,17 @@ def expected_frame(row):
     body, requires_commit = split_commit(row.get("target_command", ""))
     action = body.split()[0].lower() if body else ""
     domain, sub_domain = infer_domain_subdomain(body)
+    frame = command_to_semantic_frame(body)
+    operation = str(frame.get("operation", "general"))
+    variant = command_variant(body)
     return {
         "action": action,
         "domain": domain,
         "sub_domain": sub_domain,
+        "operation": operation,
+        "variant": variant,
         "template_key": "/".join((action, domain, sub_domain)),
+        "template_variant_key": "/".join((action, domain, sub_domain, operation, variant)),
         "requires_commit": requires_commit,
     }
 
@@ -122,6 +129,11 @@ def evaluate_rows(rows):
             and parsed.get("domain") == expected["domain"]
             and parsed.get("sub_domain") == expected["sub_domain"]
         )
+        counts["operation_accuracy"] += float(json_valid and parsed.get("operation") == expected["operation"])
+        counts["operation_inferred_rate"] += float(
+            isinstance(parsed, dict)
+            and ("inferred_operation" in parse_warnings or bool(parsed.get("_operation_inferred")))
+        )
         pp, pr, pf = parameter_scores(row)
         counts["parameter_precision"] += pp
         counts["parameter_recall"] += pr
@@ -131,6 +143,9 @@ def evaluate_rows(rows):
 
         counts["template_hit_rate"] += float(bool(context.get("found")))
         counts["correct_template_rate"] += float(row.get("template_key") == expected["template_key"])
+        counts["family_hit_rate"] += float(row.get("template_key") == expected["template_key"])
+        counts["variant_hit_rate"] += float(context.get("template_variant_key") == expected["template_variant_key"])
+        counts["template_variant_accuracy"] += float(context.get("template_variant_key") == expected["template_variant_key"])
         counts["template_not_found_rate"] += float(context.get("reason") == "template_not_found")
         counts["ambiguous_template_rate"] += float(context.get("reason") == "ambiguous_template")
 
