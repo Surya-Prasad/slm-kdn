@@ -12,19 +12,23 @@ from sklearn.metrics.pairwise import cosine_similarity
 from utils import read_jsonl
 
 
-RAG_PROMPT_TEMPLATE = """You are a networking assistant answering questions using retrieved documentation.
+RAG_PROMPT_TEMPLATE = """You are a network intent translation assistant. Convert the user intent into the correct Juniper Junos CLI command.
 
-Use the context below to answer the user question.
-Prefer the Juniper EX3300 hardware config guide when the question is about EX3300 hardware, ports, LEDs, power, installation, interfaces, or CLI/config behavior.
+Use retrieved NIT examples for command pattern matching.
+Use retrieved documentation for hardware/device-specific grounding.
+Prefer the Juniper EX3300 hardware config guide when the question is about EX3300 hardware, ports, LEDs, power, installation, interfaces, LCDs, or CLI/config behavior.
 
 Rules:
-- Use only the provided context when answering factual questions.
-- If the context does not contain the answer, say: "I could not find this in the retrieved EX3300 guide context."
-- Mention the source filename and page number when available.
-- Be precise. Do not guess.
+- Output only the final CLI command.
+- Do not explain.
+- Do not include source citations in the answer.
+- If the retrieved context does not contain enough information for a CLI command, output the best command implied by the user intent and NIT examples.
 
-Context:
-{context}
+Retrieved NIT examples:
+{examples}
+
+Retrieved documentation:
+{docs}
 
 Question:
 {question}
@@ -124,10 +128,22 @@ def load_rag_documents(root: Path, rag_dir: str) -> List[Document]:
     return docs
 
 
-def load_nit_documents(root: Path, data_dir: str) -> List[Document]:
+def nit_splits_for_rag(cfg: Dict[str, Any]) -> List[str]:
+    rag_cfg = cfg.get("rag", {})
+    splits = []
+    if rag_cfg.get("include_train_in_rag", True):
+        splits.append("train")
+    if rag_cfg.get("include_val_in_rag", True):
+        splits.append("val")
+    if rag_cfg.get("include_test_in_rag", False):
+        splits.append("test")
+    return splits
+
+
+def load_nit_documents(root: Path, data_dir: str, splits: Iterable[str]) -> List[Document]:
     docs: List[Document] = []
     base = root / data_dir
-    for split in ("train", "val", "test"):
+    for split in splits:
         path = base / f"{split}.jsonl"
         if not path.exists():
             continue
@@ -158,9 +174,27 @@ def load_nit_documents(root: Path, data_dir: str) -> List[Document]:
 def load_documents(cfg: Dict[str, Any], root: Optional[Path] = None) -> List[Document]:
     root = root or project_root()
     rag_cfg = cfg.get("rag", {})
-    docs = load_nit_documents(root, cfg["data"]["output_dir"])
+    docs = load_nit_documents(root, cfg["data"]["output_dir"], nit_splits_for_rag(cfg))
     docs.extend(load_rag_documents(root, rag_cfg.get("doc_dir", "rag-doc")))
     return docs
+
+
+def indexed_source_files(cfg: Dict[str, Any], root: Optional[Path] = None) -> List[Path]:
+    root = root or project_root()
+    paths: List[Path] = []
+    data_base = root / cfg["data"]["output_dir"]
+    for split in nit_splits_for_rag(cfg):
+        path = data_base / f"{split}.jsonl"
+        if path.exists():
+            paths.append(path)
+    rag_base = root / cfg.get("rag", {}).get("doc_dir", "rag-doc")
+    if rag_base.exists():
+        paths.extend(
+            p
+            for p in rag_base.rglob("*")
+            if p.is_file() and p.suffix.lower() in {".pdf", ".txt", ".md", ".markdown"}
+        )
+    return sorted(paths)
 
 
 def _split_paragraphs(text: str) -> List[str]:
@@ -243,12 +277,7 @@ def _fingerprint(cfg: Dict[str, Any], root: Path) -> str:
     h = hashlib.sha256()
     h.update(json.dumps(rag_cfg, sort_keys=True).encode("utf-8"))
     h.update(str(cfg["data"]["output_dir"]).encode("utf-8"))
-    paths: List[Path] = []
-    rag_base = root / rag_cfg.get("doc_dir", "rag-doc")
-    if rag_base.exists():
-        paths.extend(p for p in rag_base.rglob("*") if p.is_file())
-    data_base = root / cfg["data"]["output_dir"]
-    paths.extend(p for p in data_base.glob("*.jsonl") if p.is_file())
+    paths = indexed_source_files(cfg, root)
     for path in sorted(paths):
         h.update(str(path.relative_to(root)).encode("utf-8"))
         h.update(_sha256_file(path).encode("utf-8"))
@@ -309,7 +338,7 @@ class RagIndex:
     def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
         q = self.vectorizer.transform([query])
         sims = cosine_similarity(q, self.matrix).ravel()
-        if self.rag_doc_boost and re.search(r"\b(ex3300|juniper|hardware|port|ports|led|power|console|interface|cli)\b", query, re.I):
+        if self.rag_doc_boost and re.search(r"\b(ex3300|hardware|front panel|lcd|led|power|console)\b", query, re.I):
             for i, chunk in enumerate(self.chunks):
                 if chunk.metadata.get("doc_type") == "rag-doc":
                     sims[i] += self.rag_doc_boost
@@ -358,11 +387,20 @@ def get_or_build_index(cfg: Dict[str, Any], rebuild: bool = False, root: Optiona
     rag_cfg = cfg.get("rag", {})
     index_path = root / rag_cfg.get("index_path", "results/rag_index.pkl")
     expected_fingerprint = _fingerprint(cfg, root)
+    if rebuild and index_path.exists():
+        index_path.unlink()
     if index_path.exists() and not rebuild:
         index = RagIndex.load(index_path)
         if index.fingerprint == expected_fingerprint:
             return index
         print("[RAG] Existing index is stale; rebuilding because source documents or settings changed.")
+    print("[RAG] Building index from:")
+    indexed = indexed_source_files(cfg, root)
+    for path in indexed:
+        print(f"[RAG]   include {path.relative_to(root)}")
+    excluded_test = root / cfg["data"]["output_dir"] / "test.jsonl"
+    if excluded_test.exists() and not rag_cfg.get("include_test_in_rag", False):
+        print(f"[RAG]   exclude {excluded_test.relative_to(root)}")
     index = RagIndex.build(cfg, root)
     index.save(index_path)
     return index
@@ -382,17 +420,29 @@ def format_retrieval_debug(query: str, chunks: List[RetrievedChunk]) -> str:
     return "\n".join(lines)
 
 
+def assert_no_test_leakage(chunks: List[RetrievedChunk]) -> None:
+    for chunk in chunks:
+        if chunk.metadata.get("source_file") == "test.jsonl":
+            raise RuntimeError("Evaluation leakage detected: test.jsonl was retrieved.")
+
+
 def build_rag_prompt(question: str, chunks: List[RetrievedChunk]) -> str:
-    context_parts = []
+    example_parts = []
+    doc_parts = []
     for chunk in chunks:
         meta = chunk.metadata
         page = meta.get("page")
         cite = meta.get("source_file", "unknown")
         if page:
             cite = f"{cite}, page {page}"
-        context_parts.append(f"[Source: {cite}]\n{chunk.text}")
-    context = "\n\n---\n\n".join(context_parts)
-    return RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        part = f"[Source: {cite}]\n{chunk.text}"
+        if meta.get("doc_type") == "nit":
+            example_parts.append(part)
+        else:
+            doc_parts.append(part)
+    examples = "\n\n---\n\n".join(example_parts) if example_parts else "None retrieved."
+    docs = "\n\n---\n\n".join(doc_parts) if doc_parts else "None retrieved."
+    return RAG_PROMPT_TEMPLATE.format(examples=examples, docs=docs, question=question)
 
 
 def extractive_answer(question: str, chunks: List[RetrievedChunk]) -> str:

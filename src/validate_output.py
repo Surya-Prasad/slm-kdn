@@ -61,9 +61,11 @@ def validate(record):
     """Validate both intermediate JSON and final assembled CLI prediction."""
     errors = []
 
-    json_ok, json_errors, _ = validate_json_structure(record.get("prediction_json") or record.get("prediction_json_raw", ""))
-    if not json_ok:
-        errors.extend(json_errors)
+    json_candidate = record.get("prediction_json") or record.get("prediction_json_raw")
+    if json_candidate:
+        json_ok, json_errors, _ = validate_json_structure(json_candidate)
+        if not json_ok:
+            errors.extend(json_errors)
 
     final_ok, final_errors = validate_prediction(
         record.get("prediction", ""),

@@ -15,6 +15,9 @@ rag:
   enabled: false
   doc_dir: rag-doc
   index_path: results/rag_index.pkl
+  include_train_in_rag: true
+  include_val_in_rag: true
+  include_test_in_rag: false
   chunk_size: 2200
   chunk_overlap: 300
   top_k: 5
@@ -24,18 +27,20 @@ rag:
 training:
   base_model: meta-llama/Meta-Llama-3-8B
   max_seq_len: 512
-  per_device_batch_size: 1
-  gradient_accumulation_steps: 16
+  per_device_batch_size: 2
+  gradient_accumulation_steps: 8
   learning_rate: 0.0002
   num_train_epochs: 3
-  lora_r: 16
-  lora_alpha: 32
+  lora_r: 32
+  lora_alpha: 64
   lora_dropout: 0.05
   output_dir: results/lora_adapter
   use_4bit: true
-  bf16: false
+  bf16: true
+  pad_to_multiple_of: 8
 
 inference:
+  batch_size: 32
   max_new_tokens: 64
   temperature: 0.0
   top_p: 1.0
