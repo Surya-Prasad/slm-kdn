@@ -13,15 +13,19 @@ prompt:
 
 rag:
   enabled: false
+  corpus: train,rag_docs
   doc_dir: rag-doc
   index_path: results/rag_index.pkl
   include_train_in_rag: true
-  include_val_in_rag: true
+  include_val_in_rag: false
   include_test_in_rag: false
+  include_rag_docs: true
   chunk_size: 2200
   chunk_overlap: 300
   top_k: 5
   max_features: 50000
+  dense_weight: 0.65
+  lexical_weight: 0.35
   rag_doc_boost: 0.15
 
 training:

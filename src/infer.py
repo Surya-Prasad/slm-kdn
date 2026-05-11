@@ -8,7 +8,8 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from preprocess import build_prompt
-from rag import assert_no_test_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index
+from rag import apply_rag_corpus, assert_no_eval_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index
+from rag_store import retrieve_template
 from utils import load_config, read_jsonl, write_jsonl
 
 
@@ -101,11 +102,15 @@ def clean_answer(s):
 
 def main(a):
     c=load_config(a.config); t=c['training']; ic=c['inference']
+    apply_rag_corpus(c, a.rag_corpus)
     batch_size = ic.get("batch_size", 1) 
     use_rag = a.use_rag or bool(c.get("rag", {}).get("enabled", False))
     rag_index = get_or_build_index(c, rebuild=a.rebuild_rag) if use_rag else None
     eval_mode = Path(a.input_file).name in {"test.jsonl", "clean_test.jsonl", "rag_smoke.jsonl"}
+    strict_rag = not c.get("rag", {}).get("include_val_in_rag", False)
     source_counts = Counter()
+    top1_source_counts = Counter()
+    top5_source_counts = Counter()
     
     tok=AutoTokenizer.from_pretrained(t['base_model'])
     tok.padding_side = 'left' 
@@ -130,9 +135,13 @@ def main(a):
             if rag_index:
                 chunks = rag_index.retrieve(question, top_k=int(c.get("rag", {}).get("top_k", 5)))
                 if eval_mode and not a.allow_test_rag:
-                    assert_no_test_leakage(chunks)
+                    assert_no_eval_leakage(chunks, strict=strict_rag)
+                if chunks:
+                    top1_source_counts[chunks[0].metadata.get("source_file", "unknown")] += 1
                 for chunk in chunks:
-                    source_counts[chunk.metadata.get("source_file", "unknown")] += 1
+                    source = chunk.metadata.get("source_file", "unknown")
+                    source_counts[source] += 1
+                    top5_source_counts[source] += 1
                 retrievals.append(chunks)
                 if a.rag_debug:
                     print(format_retrieval_debug(question, chunks))
@@ -155,19 +164,65 @@ def main(a):
                     "source_file": chunk.metadata.get("source_file"),
                     "page": chunk.metadata.get("page"),
                     "score": chunk.score,
+                    "dense_score": chunk.dense_score,
+                    "lexical_score": chunk.lexical_score,
                 }
                 for chunk in retrievals[j]
             ]
             row = {**batch_rows[j], 'prediction': pred}
             if rag_index:
                 row["rag_sources"] = rag_sources
+                row["rag_context_previews"] = [re.sub(r"\s+", " ", chunk.text)[:300] for chunk in retrievals[j]]
+                row["rag_prompt"] = prompts[j] if a.save_prompts else None
             out.append(row)
             
     write_jsonl(a.output_file,out)
     if rag_index:
+        if eval_mode and out:
+            exact = sum(1 for row in out if row.get("prediction", "").strip() == row.get("target_command", "").strip())
+            print(f"[EVAL] exact_match_accuracy: {exact / len(out):.4f} ({exact}/{len(out)})")
         print("[RAG] retrieved chunk counts:")
         for source, count in sorted(source_counts.items()):
             print(f"[RAG]   {source}: {count}")
+        print("[RAG] top-1 source distribution:")
+        for source, count in sorted(top1_source_counts.items()):
+            print(f"[RAG]   {source}: {count}")
+        print("[RAG] top-5 source distribution:")
+        for source, count in sorted(top5_source_counts.items()):
+            print(f"[RAG]   {source}: {count}")
+        failure_file = a.failure_file
+        if eval_mode and not failure_file:
+            mode_name = "strict" if strict_rag else "relaxed"
+            failure_file = f"outputs/rag_failures_{mode_name}.jsonl"
+        if eval_mode and failure_file:
+            failures = []
+            for row in out:
+                exact = row.get("prediction", "").strip() == row.get("target_command", "").strip()
+                if exact:
+                    continue
+                failures.append(
+                    {
+                        "query": row.get("intent", ""),
+                        "gold_command": row.get("target_command", ""),
+                        "predicted_command": row.get("prediction", ""),
+                        "exact_match": exact,
+                        "retrieved_sources": row.get("rag_sources", []),
+                        "retrieved_context_previews": row.get("rag_context_previews", []),
+                        "retrieved_scores": [
+                            {
+                                "source_file": source.get("source_file"),
+                                "page": source.get("page"),
+                                "score": source.get("score"),
+                                "dense_score": source.get("dense_score"),
+                                "lexical_score": source.get("lexical_score"),
+                            }
+                            for source in row.get("rag_sources", [])
+                        ],
+                        "prompt": row.get("rag_prompt"),
+                    }
+                )
+            write_jsonl(failure_file, failures[:10])
+            print(f"[RAG] wrote failure analysis to {failure_file}")
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); p.add_argument('--rag-corpus',dest='rag_corpus',default=None); p.add_argument('--failure-file',dest='failure_file',default=None); p.add_argument('--save-prompts',dest='save_prompts',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)

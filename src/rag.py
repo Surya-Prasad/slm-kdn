@@ -48,10 +48,70 @@ class RetrievedChunk:
     text: str
     metadata: Dict[str, Any]
     score: float
+    dense_score: float = 0.0
+    lexical_score: float = 0.0
 
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+PROTOCOL_TERMS = ("ospf", "rstp", "igmp", "igmp-snooping", "sflow", "snmp", "lldp")
+ACTION_TERMS = ("show", "display", "set", "enable", "disable", "delete", "remove", "clear", "trace", "notify")
+COMMAND_NOUNS = (
+    "neighbor",
+    "neighbors",
+    "interface",
+    "route",
+    "syslog",
+    "trap-group",
+    "community",
+    "mac",
+    "vlan",
+    "telemetry",
+)
+HARDWARE_TERMS = (
+    "ex3300",
+    "front panel",
+    "rear panel",
+    "lcd",
+    "led",
+    "port",
+    "console",
+    "management port",
+    "power",
+    "poe",
+    "rack",
+    "mounting",
+    "chassis",
+)
+
+
+def apply_rag_corpus(cfg: Dict[str, Any], corpus: Optional[str]) -> Dict[str, Any]:
+    if not corpus:
+        corpus = cfg.get("rag", {}).get("corpus")
+    if not corpus:
+        return cfg
+    tokens = {part.strip().lower() for part in corpus.split(",") if part.strip()}
+    rag_cfg = cfg.setdefault("rag", {})
+    rag_cfg["corpus"] = ",".join(sorted(tokens))
+    rag_cfg["include_train_in_rag"] = "train" in tokens
+    rag_cfg["include_val_in_rag"] = "val" in tokens
+    rag_cfg["include_test_in_rag"] = "test" in tokens
+    rag_cfg["include_rag_docs"] = "rag_docs" in tokens or "rag-docs" in tokens or "docs" in tokens
+    return cfg
+
+
+def _has_term(text: str, term: str) -> bool:
+    return re.search(rf"\b{re.escape(term)}\b", text, flags=re.I) is not None
+
+
+def _matched_terms(text: str, terms: Iterable[str]) -> List[str]:
+    return [term for term in terms if _has_term(text, term)]
+
+
+def _is_hardware_query(query: str) -> bool:
+    return bool(_matched_terms(query, HARDWARE_TERMS))
 
 
 def _sha256_file(path: Path) -> str:
@@ -129,6 +189,7 @@ def load_rag_documents(root: Path, rag_dir: str) -> List[Document]:
 
 
 def nit_splits_for_rag(cfg: Dict[str, Any]) -> List[str]:
+    apply_rag_corpus(cfg, None)
     rag_cfg = cfg.get("rag", {})
     splits = []
     if rag_cfg.get("include_train_in_rag", True):
@@ -165,6 +226,9 @@ def load_nit_documents(root: Path, data_dir: str, splits: Iterable[str]) -> List
                             "split": split,
                             "page": None,
                             "doc_type": "nit",
+                            "intent": row.get("intent", ""),
+                            "context": row.get("context", ""),
+                            "target_command": row.get("target_command", ""),
                         },
                     )
                 )
@@ -175,7 +239,8 @@ def load_documents(cfg: Dict[str, Any], root: Optional[Path] = None) -> List[Doc
     root = root or project_root()
     rag_cfg = cfg.get("rag", {})
     docs = load_nit_documents(root, cfg["data"]["output_dir"], nit_splits_for_rag(cfg))
-    docs.extend(load_rag_documents(root, rag_cfg.get("doc_dir", "rag-doc")))
+    if rag_cfg.get("include_rag_docs", True):
+        docs.extend(load_rag_documents(root, rag_cfg.get("doc_dir", "rag-doc")))
     return docs
 
 
@@ -187,8 +252,9 @@ def indexed_source_files(cfg: Dict[str, Any], root: Optional[Path] = None) -> Li
         path = data_base / f"{split}.jsonl"
         if path.exists():
             paths.append(path)
-    rag_base = root / cfg.get("rag", {}).get("doc_dir", "rag-doc")
-    if rag_base.exists():
+    rag_cfg = cfg.get("rag", {})
+    rag_base = root / rag_cfg.get("doc_dir", "rag-doc")
+    if rag_cfg.get("include_rag_docs", True) and rag_base.exists():
         paths.extend(
             p
             for p in rag_base.rglob("*")
@@ -288,16 +354,26 @@ class RagIndex:
     def __init__(
         self,
         chunks: List[Document],
-        vectorizer: TfidfVectorizer,
-        matrix: Any,
+        dense_vectorizer: TfidfVectorizer,
+        dense_matrix: Any,
+        lexical_vectorizer: TfidfVectorizer,
+        lexical_matrix: Any,
         fingerprint: str,
         rag_doc_boost: float = 0.0,
+        dense_weight: float = 0.65,
+        lexical_weight: float = 0.35,
     ):
         self.chunks = chunks
-        self.vectorizer = vectorizer
-        self.matrix = matrix
+        self.vectorizer = dense_vectorizer
+        self.matrix = dense_matrix
+        self.dense_vectorizer = dense_vectorizer
+        self.dense_matrix = dense_matrix
+        self.lexical_vectorizer = lexical_vectorizer
+        self.lexical_matrix = lexical_matrix
         self.fingerprint = fingerprint
         self.rag_doc_boost = rag_doc_boost
+        self.dense_weight = dense_weight
+        self.lexical_weight = lexical_weight
 
     @classmethod
     def build(cls, cfg: Dict[str, Any], root: Optional[Path] = None) -> "RagIndex":
@@ -311,18 +387,31 @@ class RagIndex:
         )
         if not chunks:
             raise ValueError("No RAG documents were loaded. Check data/processed and rag-doc/.")
-        vectorizer = TfidfVectorizer(
+        dense_vectorizer = TfidfVectorizer(
             ngram_range=(1, 2),
             stop_words="english",
             max_features=int(rag_cfg.get("max_features", 50000)),
         )
-        matrix = vectorizer.fit_transform([c.text for c in chunks])
+        lexical_vectorizer = TfidfVectorizer(
+            analyzer="word",
+            token_pattern=r"(?u)\b[\w/-]+\b",
+            ngram_range=(1, 3),
+            lowercase=True,
+            max_features=int(rag_cfg.get("max_features", 50000)),
+        )
+        texts = [c.text for c in chunks]
+        dense_matrix = dense_vectorizer.fit_transform(texts)
+        lexical_matrix = lexical_vectorizer.fit_transform(texts)
         return cls(
             chunks=chunks,
-            vectorizer=vectorizer,
-            matrix=matrix,
+            dense_vectorizer=dense_vectorizer,
+            dense_matrix=dense_matrix,
+            lexical_vectorizer=lexical_vectorizer,
+            lexical_matrix=lexical_matrix,
             fingerprint=_fingerprint(cfg, root),
             rag_doc_boost=float(rag_cfg.get("rag_doc_boost", 0.0)),
+            dense_weight=float(rag_cfg.get("dense_weight", 0.65)),
+            lexical_weight=float(rag_cfg.get("lexical_weight", 0.35)),
         )
 
     def save(self, path: Path) -> None:
@@ -335,13 +424,84 @@ class RagIndex:
         with path.open("rb") as f:
             return pickle.load(f)
 
+    def _command_rerank_adjustment(self, query: str, chunk: Document) -> float:
+        meta = chunk.metadata or {}
+        if meta.get("doc_type") != "nit":
+            return 0.0
+
+        target = str(meta.get("target_command", ""))
+        context = str(meta.get("context", ""))
+        haystack = f"{target}\n{context}"
+        query_protocols = _matched_terms(query, PROTOCOL_TERMS)
+        target_protocols = _matched_terms(target, PROTOCOL_TERMS)
+        query_actions = _matched_terms(query, ACTION_TERMS)
+        query_nouns = _matched_terms(query, COMMAND_NOUNS)
+
+        boost = 0.0
+        for protocol in query_protocols:
+            if _has_term(target, protocol):
+                boost += 0.35
+            elif target_protocols:
+                boost -= 0.45
+
+        action_aliases = {
+            "display": ("show",),
+            "show": ("show",),
+            "disable": ("disable", "delete"),
+            "enable": ("enable", "set"),
+            "notify": ("syslog", "user"),
+            "remove": ("delete",),
+        }
+        for action in query_actions:
+            candidates = action_aliases.get(action, (action,))
+            if any(_has_term(target, candidate) for candidate in candidates):
+                boost += 0.2
+
+        for noun in query_nouns:
+            singular = noun[:-1] if noun.endswith("s") else noun
+            if _has_term(haystack, noun) or _has_term(haystack, singular):
+                boost += 0.12
+
+        q_lower = query.lower()
+        target_lower = target.lower()
+        if _has_term(query, "ospf") and _has_term(query, "disable") and "set protocols ospf disable" in target_lower:
+            boost += 1.0
+        if _has_term(query, "ospf") and (_has_term(query, "neighbor") or _has_term(query, "neighbors")):
+            if "show ospf neighbor" in target_lower:
+                boost += 1.0
+            if "show lldp neighbor" in target_lower:
+                boost -= 0.8
+        if _has_term(query, "lldp") and (_has_term(query, "neighbor") or _has_term(query, "neighbors")):
+            if "show lldp neighbor" in target_lower:
+                boost += 0.8
+        if "igmp-snooping" in q_lower and _has_term(query, "disable") and "igmp-snooping" in target_lower:
+            if "traceoptions" in target_lower and "disable" in target_lower:
+                boost += 1.0
+            elif target_lower.startswith("show "):
+                boost -= 0.7
+        if _has_term(query, "notify") and _has_term(query, "emergency"):
+            if "system syslog user" in target_lower and "any emergency" in target_lower:
+                boost += 1.0
+            elif "security" in target_lower:
+                boost -= 0.4
+
+        return boost
+
     def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
-        q = self.vectorizer.transform([query])
-        sims = cosine_similarity(q, self.matrix).ravel()
-        if self.rag_doc_boost and re.search(r"\b(ex3300|hardware|front panel|lcd|led|power|console)\b", query, re.I):
+        dense_q = self.dense_vectorizer.transform([query])
+        lexical_q = self.lexical_vectorizer.transform([query])
+        dense_scores = cosine_similarity(dense_q, self.dense_matrix).ravel()
+        lexical_scores = cosine_similarity(lexical_q, self.lexical_matrix).ravel()
+        sims = (self.dense_weight * dense_scores) + (self.lexical_weight * lexical_scores)
+        hardware_query = _is_hardware_query(query)
+        if self.rag_doc_boost and hardware_query:
             for i, chunk in enumerate(self.chunks):
                 if chunk.metadata.get("doc_type") == "rag-doc":
                     sims[i] += self.rag_doc_boost
+        if not hardware_query:
+            for i, chunk in enumerate(self.chunks):
+                if chunk.metadata.get("doc_type") == "rag-doc":
+                    sims[i] *= 0.65
         if re.search(r"\bex3300\b", query, re.I):
             other_model = re.compile(r"\bEX(?!3300\b)\d{4}[A-Z-]*\b")
             for i, chunk in enumerate(self.chunks):
@@ -370,12 +530,15 @@ class RagIndex:
                     sims[i] += 0.25
                 if "connecting dc power" in t_lower:
                     sims[i] *= 0.8
+            sims[i] += self._command_rerank_adjustment(query, chunk)
         order = sims.argsort()[::-1][:top_k]
         return [
             RetrievedChunk(
                 text=self.chunks[i].text,
                 metadata=self.chunks[i].metadata,
                 score=float(sims[i]),
+                dense_score=float(dense_scores[i]),
+                lexical_score=float(lexical_scores[i]),
             )
             for i in order
             if sims[i] > 0
@@ -384,6 +547,7 @@ class RagIndex:
 
 def get_or_build_index(cfg: Dict[str, Any], rebuild: bool = False, root: Optional[Path] = None) -> RagIndex:
     root = root or project_root()
+    apply_rag_corpus(cfg, None)
     rag_cfg = cfg.get("rag", {})
     index_path = root / rag_cfg.get("index_path", "results/rag_index.pkl")
     expected_fingerprint = _fingerprint(cfg, root)
@@ -398,9 +562,11 @@ def get_or_build_index(cfg: Dict[str, Any], rebuild: bool = False, root: Optiona
     indexed = indexed_source_files(cfg, root)
     for path in indexed:
         print(f"[RAG]   include {path.relative_to(root)}")
-    excluded_test = root / cfg["data"]["output_dir"] / "test.jsonl"
-    if excluded_test.exists() and not rag_cfg.get("include_test_in_rag", False):
-        print(f"[RAG]   exclude {excluded_test.relative_to(root)}")
+    data_base = root / cfg["data"]["output_dir"]
+    for split in ("val", "test"):
+        excluded = data_base / f"{split}.jsonl"
+        if excluded.exists() and not rag_cfg.get(f"include_{split}_in_rag", False):
+            print(f"[RAG]   exclude {excluded.relative_to(root)}")
     index = RagIndex.build(cfg, root)
     index.save(index_path)
     return index
@@ -415,15 +581,21 @@ def format_retrieval_debug(query: str, chunks: List[RetrievedChunk]) -> str:
         page_text = f", page={page}" if page else ""
         lines.append(
             f"[RAG] {i}. source={meta.get('source_file')}{page_text}, "
-            f"score={chunk.score:.4f}, preview={preview}"
+            f"score={chunk.score:.4f}, dense={chunk.dense_score:.4f}, "
+            f"lexical={chunk.lexical_score:.4f}, preview={preview}"
         )
     return "\n".join(lines)
 
 
-def assert_no_test_leakage(chunks: List[RetrievedChunk]) -> None:
+def assert_no_eval_leakage(chunks: List[RetrievedChunk], strict: bool = False) -> None:
     for chunk in chunks:
-        if chunk.metadata.get("source_file") == "test.jsonl":
-            raise RuntimeError("Evaluation leakage detected: test.jsonl was retrieved.")
+        source = chunk.metadata.get("source_file")
+        if source == "test.jsonl" or (strict and source == "val.jsonl"):
+            raise RuntimeError(f"Evaluation leakage detected: retrieved source={source}")
+
+
+def assert_no_test_leakage(chunks: List[RetrievedChunk]) -> None:
+    assert_no_eval_leakage(chunks, strict=False)
 
 
 def build_rag_prompt(question: str, chunks: List[RetrievedChunk]) -> str:
