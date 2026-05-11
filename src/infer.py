@@ -1,9 +1,11 @@
 # Meant for use with an A100
 import argparse, json, re, torch
+from collections import Counter
+from pathlib import Path
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from preprocess import build_prompt
-from rag import build_rag_prompt, format_retrieval_debug, get_or_build_index
+from rag import assert_no_test_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index
 from utils import load_config, read_jsonl, write_jsonl
 from tqdm import tqdm
 
@@ -39,8 +41,11 @@ def clean_answer(s):
 
 def main(a):
     c=load_config(a.config); t=c['training']; ic=c['inference']
+    batch_size = ic.get("batch_size", 1) 
     use_rag = a.use_rag or bool(c.get("rag", {}).get("enabled", False))
     rag_index = get_or_build_index(c, rebuild=a.rebuild_rag) if use_rag else None
+    eval_mode = Path(a.input_file).name in {"test.jsonl", "clean_test.jsonl", "rag_smoke.jsonl"}
+    source_counts = Counter()
     
     tok=AutoTokenizer.from_pretrained(t['base_model'])
     tok.padding_side = 'left' 
@@ -52,7 +57,6 @@ def main(a):
     rows=read_jsonl(a.input_file)
     out=[]
     
-    batch_size = 32 
     print(f"\n[INFO] Starting BATCHED inference on {len(rows)} instances for {a.input_file.split('/')[-1]}...")
     
     for i in tqdm(range(0, len(rows), batch_size), desc="Batches"):
@@ -63,6 +67,10 @@ def main(a):
             question = r['intent']
             if rag_index:
                 chunks = rag_index.retrieve(question, top_k=int(c.get("rag", {}).get("top_k", 5)))
+                if eval_mode and not a.allow_test_rag:
+                    assert_no_test_leakage(chunks)
+                for chunk in chunks:
+                    source_counts[chunk.metadata.get("source_file", "unknown")] += 1
                 retrievals.append(chunks)
                 if a.rag_debug:
                     print(format_retrieval_debug(question, chunks))
@@ -94,6 +102,10 @@ def main(a):
             out.append(row)
             
     write_jsonl(a.output_file,out)
+    if rag_index:
+        print("[RAG] retrieved chunk counts:")
+        for source, count in sorted(source_counts.items()):
+            print(f"[RAG]   {source}: {count}")
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rag_debug',action='store_true'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)
