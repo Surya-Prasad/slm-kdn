@@ -1,38 +1,84 @@
-# Meant for use with an A100
-import argparse, json, re, torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+# Meant for use with an A100 (unquantized fp16 path)
+import argparse
+import json
+
+import torch
 from peft import PeftModel
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from preprocess import build_prompt
 from rag import build_rag_prompt, format_retrieval_debug, get_or_build_index
 from utils import load_config, read_jsonl, write_jsonl
-from tqdm import tqdm
 
-def clean(s):
-    # Remove conversational prefixes
-    s = re.sub(r'^(Command:|Output:)\s*', '', s.strip(), flags=re.I)
-    
-    # CRITICAL FIX: Convert any actual newlines into literal '\n' strings 
-    # so we can process everything uniformly
-    s = s.replace('\n', '\\n')
-    
-    # Split by the literal '\n' string
-    parts = s.split('\\n')
-    if not parts: return ""
-    
-    cmd = parts[0].strip()
-    
-    # --- THE GUARDRAIL ---
-    # Define standard Juniper operational (read-only) prefixes
-    read_only_prefixes = ('show ', 'ping ', 'traceroute ', 'monitor ', 'clear ', 'request ')
-    is_read_only = cmd.lower().startswith(read_only_prefixes)
-    
-    # If the model logically output 'commit' as the second command, append it exactly 
-    # as the ground-truth dataset expects it: with a literal '\n'.
-    # BUT explicitly prevent appending to read-only operational commands.
-    if len(parts) > 1 and parts[1].strip().lower() == 'commit' and not is_read_only:
-        cmd += '\\ncommit'
-        
-    return cmd
+
+REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
+ALLOWED_ACTIONS = {"set", "delete", "show"}
+
+
+def parse_semantic_json(raw: str):
+    """Parse potentially noisy model output into a semantic JSON object with safe type normalization."""
+    errors = []
+    try:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("no_json_object_found")
+
+        candidate = raw[start : end + 1]
+        parsed = json.loads(candidate)
+
+        if not isinstance(parsed, dict):
+            raise ValueError("json_not_object")
+
+        missing = REQUIRED_JSON_KEYS - set(parsed.keys())
+        if missing:
+            raise ValueError(f"missing_keys:{','.join(sorted(missing))}")
+
+        if not isinstance(parsed.get("parameters"), dict):
+            raise ValueError("parameters_not_object")
+
+        if parsed.get("action") not in ALLOWED_ACTIONS:
+            errors.append("invalid_enum_action")
+
+        params = parsed["parameters"]
+        for key in ("vlan_id", "unit"):
+            if key in params and params[key] is not None:
+                try:
+                    params[key] = int(params[key])
+                except (TypeError, ValueError):
+                    params[key] = None
+                    errors.append(f"invalid_type_{key}")
+
+        error_str = ";".join(errors) if errors else None
+        return parsed, error_str
+
+    except Exception as exc:  # robust boundary for hallucinated formatting
+        return None, str(exc)
+
+
+def assemble_command(parsed):
+    record = retrieve_template(
+        parsed.get("action", ""),
+        parsed.get("domain", ""),
+        parsed.get("sub_domain", ""),
+    )
+    if record is None:
+        return "", "template_not_found"
+
+    fields = dict(record.default_params)
+    fields.update(dict(parsed.get("parameters", {})))
+
+    try:
+        command = record.template.format(**fields).strip()
+    except KeyError as exc:
+        return "", f"missing_template_parameter:{exc}"
+
+    if record.requires_commit:
+        command = f"{command}\\ncommit"
+
+    return command, None
+
 
 def clean_answer(s):
     return re.sub(r"\s+", " ", s.strip())
@@ -46,13 +92,14 @@ def main(a):
     tok.padding_side = 'left' 
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-        
-    base=AutoModelForCausalLM.from_pretrained(t['base_model'],device_map='auto',torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32)
-    model=PeftModel.from_pretrained(base, t['output_dir'])
-    rows=read_jsonl(a.input_file)
-    out=[]
-    
-    batch_size = 32 
+
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    base = AutoModelForCausalLM.from_pretrained(t["base_model"], device_map="auto", torch_dtype=dtype)
+    model = PeftModel.from_pretrained(base, t["output_dir"])
+
+    rows = read_jsonl(a.input_file)
+    out = []
+
     print(f"\n[INFO] Starting BATCHED inference on {len(rows)} instances for {a.input_file.split('/')[-1]}...")
     
     for i in tqdm(range(0, len(rows), batch_size), desc="Batches"):
@@ -74,8 +121,8 @@ def main(a):
         inputs = tok(prompts, return_tensors='pt', padding=True).to(model.device)
         
         with torch.no_grad():
-            gens = model.generate(**inputs, max_new_tokens=ic['max_new_tokens'], do_sample=False)
-        
+            gens = model.generate(**inputs, max_new_tokens=ic["max_new_tokens"], do_sample=False)
+
         for j, gen in enumerate(gens):
             text = tok.decode(gen, skip_special_tokens=True)
             raw_pred = text[len(prompts[j]):]
