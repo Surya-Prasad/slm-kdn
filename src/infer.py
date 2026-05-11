@@ -8,7 +8,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from preprocess import build_prompt
-from rag_store import retrieve_template
+from rag import build_rag_prompt, format_retrieval_debug, get_or_build_index
 from utils import load_config, read_jsonl, write_jsonl
 
 
@@ -80,13 +80,16 @@ def assemble_command(parsed):
     return command, None
 
 
-def main(a):
-    c = load_config(a.config)
-    t = c["training"]
-    ic = c["inference"]
+def clean_answer(s):
+    return re.sub(r"\s+", " ", s.strip())
 
-    tok = AutoTokenizer.from_pretrained(t["base_model"])
-    tok.padding_side = "left"
+def main(a):
+    c=load_config(a.config); t=c['training']; ic=c['inference']
+    use_rag = a.use_rag or bool(c.get("rag", {}).get("enabled", False))
+    rag_index = get_or_build_index(c, rebuild=a.rebuild_rag) if use_rag else None
+    
+    tok=AutoTokenizer.from_pretrained(t['base_model'])
+    tok.padding_side = 'left' 
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
 
@@ -98,45 +101,46 @@ def main(a):
     out = []
 
     print(f"\n[INFO] Starting BATCHED inference on {len(rows)} instances for {a.input_file.split('/')[-1]}...")
-
-    for i in tqdm(range(0, len(rows), a.batch_size), desc="Batches"):
-        batch_rows = rows[i : i + a.batch_size]
-        prompts = [build_prompt(r["intent"], r.get("context", ""), a.mode) for r in batch_rows]
-
-        inputs = tok(prompts, return_tensors="pt", padding=True).to(model.device)
-
+    
+    for i in tqdm(range(0, len(rows), batch_size), desc="Batches"):
+        batch_rows = rows[i:i+batch_size]
+        prompts = []
+        retrievals = []
+        for r in batch_rows:
+            question = r['intent']
+            if rag_index:
+                chunks = rag_index.retrieve(question, top_k=int(c.get("rag", {}).get("top_k", 5)))
+                retrievals.append(chunks)
+                if a.rag_debug:
+                    print(format_retrieval_debug(question, chunks))
+                prompts.append(build_rag_prompt(question, chunks))
+            else:
+                retrievals.append([])
+                prompts.append(build_prompt(question, r.get('context',''), a.mode))
+        
+        inputs = tok(prompts, return_tensors='pt', padding=True).to(model.device)
+        
         with torch.no_grad():
             gens = model.generate(**inputs, max_new_tokens=ic["max_new_tokens"], do_sample=False)
 
         for j, gen in enumerate(gens):
             text = tok.decode(gen, skip_special_tokens=True)
-            raw_json = text[len(prompts[j]) :].strip()
-            parsed, parse_error = parse_semantic_json(raw_json)
-
-            assembled = ""
-            assembly_error = None
-            if parsed is not None:
-                assembled, assembly_error = assemble_command(parsed)
-
-            out.append(
+            raw_pred = text[len(prompts[j]):]
+            pred = clean_answer(raw_pred) if rag_index else clean(raw_pred)
+            rag_sources = [
                 {
-                    **batch_rows[j],
-                    "prediction_json_raw": raw_json,
-                    "prediction_json": parsed,
-                    "prediction": assembled,
-                    "parse_error": parse_error,
-                    "assembly_error": assembly_error,
+                    "source_file": chunk.metadata.get("source_file"),
+                    "page": chunk.metadata.get("page"),
+                    "score": chunk.score,
                 }
-            )
+                for chunk in retrievals[j]
+            ]
+            row = {**batch_rows[j], 'prediction': pred}
+            if rag_index:
+                row["rag_sources"] = rag_sources
+            out.append(row)
+            
+    write_jsonl(a.output_file,out)
 
-    write_jsonl(a.output_file, out)
-
-
-if __name__ == "__main__":
-    p = argparse.ArgumentParser()
-    p.add_argument("--config", default="config.yaml")
-    p.add_argument("--input_file", required=True)
-    p.add_argument("--output_file", required=True)
-    p.add_argument("--mode", default="intent_with_context")
-    p.add_argument("--batch_size", type=int, default=32)
-    main(p.parse_args())
+if __name__=='__main__':
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rag_debug',action='store_true'); main(p.parse_args())

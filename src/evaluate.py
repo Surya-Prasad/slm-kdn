@@ -20,7 +20,7 @@ def main(a):
         pred=r['prediction']; gold=r['target_command']; cat=r.get('category','all')
         em=float(pred.strip()==gold.strip()); nem=float(normalize_command(pred)==normalize_command(gold))
         fv=f1(pred,gold); bleu=sentence_bleu([tokenize(gold)], tokenize(pred), smoothing_function=smooth)
-        val=validate(pred, r.get('intent','')); ent=extract_entities(r.get('intent',''))
+        val=validate(r); ent=extract_entities(r.get('intent',''))
         ent_ok=float(all(e in pred.lower() for e in ent)) if ent else 1.0
         for d in [m, per_cat[cat]]:
             d['exact_match']+=em; d['normalized_exact_match']+=nem; d['token_f1']+=fv; d['bleu']+=bleu; d['valid_rate']+=float(val['is_valid']); d['entity_preservation']+=ent_ok

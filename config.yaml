@@ -11,6 +11,16 @@ data:
 prompt:
   mode: intent_with_context  # intent_only | intent_with_context
 
+rag:
+  enabled: false
+  doc_dir: rag-doc
+  index_path: results/rag_index.pkl
+  chunk_size: 2200
+  chunk_overlap: 300
+  top_k: 5
+  max_features: 50000
+  rag_doc_boost: 0.15
+
 training:
   base_model: meta-llama/Meta-Llama-3-8B
   max_seq_len: 512

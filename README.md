@@ -26,6 +26,33 @@ scripts/run_eval.sh
 scripts/run_robustness.sh
 ```
 
+## RAG over EX3300 guide
+The RAG index combines processed NIT JSONL files, when present, with documents under `rag-doc/`.
+The included Juniper guide is `rag-doc/ex3300.pdf`.
+
+Build or rebuild the retrieval index and run a quick EX3300 query:
+```bash
+python src/rag_query.py --rebuild --query "What are the front panel ports on a Juniper EX3300 switch?"
+```
+
+Run the default retrieval smoke tests:
+```bash
+python src/rag_query.py --rebuild
+```
+
+Use retrieved EX3300 context during model inference:
+```bash
+python src/infer.py \
+  --input_file data/processed/test.jsonl \
+  --output_file results/predictions/rag_predictions.jsonl \
+  --use_rag \
+  --rebuild_rag \
+  --rag_debug
+```
+
+RAG settings live in `config.yaml` under `rag`. Set `--rebuild` or `--rebuild_rag` after changing files in
+`rag-doc/`; the index also rebuilds automatically when source files or chunking settings change.
+
 ## Notes
 - Dataset: `Smarneh/NIT` via HuggingFace `datasets`.
 - Prompt modes: `intent_only`, `intent_with_context`.
