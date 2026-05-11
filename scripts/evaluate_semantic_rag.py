@@ -108,6 +108,11 @@ def evaluate_rows(rows):
 
         json_valid = isinstance(parsed, dict) and not row.get("semantic_parse_error")
         counts["json_valid_rate"] += float(json_valid)
+        parse_warnings = []
+        if isinstance(parsed, dict):
+            parse_warnings = list(parsed.get("_parse_warnings") or row.get("semantic_parse_warnings") or [])
+        counts["repaired_parse_rate"] += float("repaired_full_command_action" in parse_warnings)
+        counts["unrepaired_parse_error_rate"] += float(bool(row.get("semantic_parse_error")))
         counts["action_accuracy"] += float(json_valid and parsed.get("action") == expected["action"])
         counts["domain_accuracy"] += float(json_valid and parsed.get("domain") == expected["domain"])
         counts["sub_domain_accuracy"] += float(json_valid and parsed.get("sub_domain") == expected["sub_domain"])

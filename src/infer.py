@@ -169,6 +169,7 @@ def main(a):
                     {
                         "semantic_json_raw": raw_pred.strip(),
                         "semantic_json": parsed,
+                        "semantic_parse_warnings": (parsed or {}).get("_parse_warnings", []),
                         "semantic_parse_error": parse_error,
                         "command_context": context,
                         "context_warnings": warnings,

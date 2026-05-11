@@ -4,7 +4,8 @@ from typing import Any, Dict, Optional, Tuple
 
 
 REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
-ALLOWED_ACTIONS = {"set", "delete", "show", "clear", "request", "ping", "traceroute", "monitor", "load"}
+ALLOWED_ACTIONS = {"set", "delete", "show", "clear", "request", "ping", "traceroute", "monitor", "load", "start", "run", "commit"}
+COMMAND_ACTION_TOKENS = ALLOWED_ACTIONS
 ACTION_SYNONYMS = {
     "display": "show",
     "get": "show",
@@ -38,15 +39,31 @@ def semantic_prompt(intent: str, context: str = "") -> str:
     )
 
 
-def _extract_json_object(raw: str) -> Dict[str, Any]:
-    start = raw.find("{")
-    end = raw.rfind("}")
+def _strip_pre_json_noise(raw: str) -> tuple[str, list[str]]:
+    text = str(raw or "").strip()
+    warnings = []
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```$", "", text)
+    text = re.sub(r"^(Command:|Output:)\s*", "", text, flags=re.I)
+    start = text.find("{")
+    end = text.rfind("}")
+    if end != -1 and text[end + 1 :].strip():
+        warnings.append("stripped_trailing_text_after_json")
+    if start != -1 and end != -1 and end > start:
+        text = text[start : end + 1]
+    return text, warnings
+
+
+def _extract_json_object(raw: str) -> tuple[Dict[str, Any], list[str]]:
+    cleaned, warnings = _strip_pre_json_noise(raw)
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
     if start == -1 or end == -1 or end <= start:
         raise ValueError("no_json_object_found")
-    parsed = json.loads(raw[start : end + 1])
+    parsed = json.loads(cleaned[start : end + 1])
     if not isinstance(parsed, dict):
         raise ValueError("json_not_object")
-    return parsed
+    return parsed, warnings
 
 
 def _normalize_domain(domain: str, sub_domain: str) -> tuple[str, str]:
@@ -60,7 +77,106 @@ def _normalize_domain(domain: str, sub_domain: str) -> tuple[str, str]:
     return domain_norm, sub_norm
 
 
-def normalize_semantic_frame(parsed: Dict[str, Any]) -> Dict[str, Any]:
+def _infer_domain_subdomain_from_tokens(tokens: list[str]) -> tuple[str, str]:
+    action = tokens[0] if tokens else ""
+    if action == "show":
+        if tokens[:4] == ["show", "configuration", "protocols", "sflow"]:
+            return "configuration", "protocols/sflow"
+        return (tokens[1], tokens[2] if len(tokens) > 2 else "general") if len(tokens) > 1 else ("unknown", "general")
+    if action in {"set", "delete"}:
+        if tokens[:3] == ["set", "ethernet-switching-options", "secure-access-port"]:
+            return "ethernet-switching-options", "secure-access-port"
+        if tokens[:3] == ["set", "virtual-chassis", "traceoptions"]:
+            return "virtual-chassis", "traceoptions"
+        if len(tokens) > 2 and tokens[1] == "protocols":
+            return "protocols", tokens[2]
+        return (tokens[1], tokens[2] if len(tokens) > 2 else "general") if len(tokens) > 1 else ("unknown", "general")
+    if action == "clear":
+        if len(tokens) > 1 and tokens[1] == "ethernet-switching-table":
+            return "ethernet-switching", "table"
+        return (tokens[1], tokens[2] if len(tokens) > 2 else "general") if len(tokens) > 1 else ("unknown", "general")
+    return (tokens[1], tokens[2] if len(tokens) > 2 else "general") if len(tokens) > 1 else ("unknown", "general")
+
+
+def _extract_command_parameters(command: str) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    text = str(command or "")
+    interface = re.search(r"\b[a-z]{2}-\d+/\d+/\d+\b", text)
+    if interface:
+        params["interface"] = interface.group(0)
+    ip_address = re.search(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", text)
+    if ip_address:
+        params["ip_address"] = ip_address.group(0)
+    unit = re.search(r"\bunit\s+(\d+)\b", text, flags=re.I)
+    if unit:
+        params["unit"] = int(unit.group(1))
+    vlan = re.search(r"\bvlan\s+([A-Za-z0-9_-]+)\b", text, flags=re.I)
+    if vlan:
+        value = vlan.group(1)
+        if value.isdigit():
+            params["vlan_id"] = int(value)
+        else:
+            params["vlan_name"] = value
+    limit = re.search(r"\b(?:limit|mac-move-limit)\s+(\d+)\b", text, flags=re.I)
+    if limit:
+        params["limit"] = int(limit.group(1))
+    flag = re.search(r"\bflag\s+([A-Za-z0-9_-]+)\b", text, flags=re.I)
+    if flag:
+        params["flag"] = flag.group(1)
+    username = re.search(r"\buser\s+([A-Za-z0-9_*.-]+)\b", text, flags=re.I)
+    if username:
+        params["username"] = username.group(1)
+    community = re.search(r"\bcommunity\s+([A-Za-z0-9_-]+)\b", text, flags=re.I)
+    if community:
+        params["community_name"] = community.group(1)
+    return params
+
+
+def _looks_like_full_command(value: str) -> bool:
+    tokens = str(value or "").strip().lower().split()
+    return bool(tokens and tokens[0] in COMMAND_ACTION_TOKENS and len(tokens) > 1)
+
+
+def _repair_full_command_action(parsed: Dict[str, Any], warnings: list[str]) -> Dict[str, Any]:
+    raw_action = str(parsed.get("action", "")).strip()
+    tokens = raw_action.lower().split()
+    if not tokens or tokens[0] not in COMMAND_ACTION_TOKENS or tokens[0] in ACTION_SYNONYMS:
+        return parsed
+    current_action = ACTION_SYNONYMS.get(tokens[0], tokens[0])
+    if raw_action.strip().lower() == current_action:
+        return parsed
+
+    repaired = dict(parsed)
+    repaired["action"] = current_action
+    warnings.append("repaired_full_command_action")
+    inferred_domain, inferred_sub_domain = _infer_domain_subdomain_from_tokens(tokens)
+    if (
+        not str(repaired.get("domain", "")).strip()
+        or _looks_like_full_command(str(repaired.get("domain", "")))
+        or str(repaired.get("domain", "")).strip().lower() == raw_action.lower()
+    ):
+        repaired["domain"] = inferred_domain
+        warnings.append("inferred_domain_sub_domain")
+    if (
+        not str(repaired.get("sub_domain", "")).strip()
+        or _looks_like_full_command(str(repaired.get("sub_domain", "")))
+        or str(repaired.get("sub_domain", "")).strip().lower() == raw_action.lower()
+    ):
+        repaired["sub_domain"] = inferred_sub_domain
+        if "inferred_domain_sub_domain" not in warnings:
+            warnings.append("inferred_domain_sub_domain")
+
+    params = repaired.get("parameters") if isinstance(repaired.get("parameters"), dict) else {}
+    command_params = _extract_command_parameters(raw_action)
+    merged_params = dict(command_params)
+    merged_params.update(params)
+    repaired["parameters"] = merged_params
+    return repaired
+
+
+def normalize_semantic_frame(parsed: Dict[str, Any], warnings: Optional[list[str]] = None) -> Dict[str, Any]:
+    warnings = warnings if warnings is not None else []
+    parsed = _repair_full_command_action(parsed, warnings)
     normalized = dict(parsed)
     action = str(normalized.get("action", "")).strip().lower().replace("_", "-")
     normalized["action"] = ACTION_SYNONYMS.get(action, action)
@@ -82,18 +198,20 @@ def normalize_semantic_frame(parsed: Dict[str, Any]) -> Dict[str, Any]:
             if re.fullmatch(r"\d+", text):
                 params[key] = int(text)
     normalized["parameters"] = params
+    if warnings:
+        normalized["_parse_warnings"] = list(dict.fromkeys(warnings))
     return normalized
 
 
 def parse_semantic_json(raw: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     try:
-        parsed = _extract_json_object(raw)
+        parsed, warnings = _extract_json_object(raw)
         missing = REQUIRED_JSON_KEYS - set(parsed.keys())
         if missing:
             raise ValueError("missing_keys:" + ",".join(sorted(missing)))
         if not isinstance(parsed.get("parameters"), dict):
             raise ValueError("parameters_not_object")
-        parsed = normalize_semantic_frame(parsed)
+        parsed = normalize_semantic_frame(parsed, warnings)
         if parsed.get("action") not in ALLOWED_ACTIONS:
             raise ValueError("invalid_enum_action")
         for key in REQUIRED_JSON_KEYS:

@@ -101,6 +101,35 @@ def test_numeric_vlan_id_converts_to_int():
     assert parsed["parameters"]["vlan_id"] == 100
 
 
+def test_full_cli_action_is_repaired_and_trailing_commit_ignored():
+    parsed, error = parse_semantic_json(
+        '{"action":"show chassis led", "domain":"chassis", "sub_domain":"led", "parameters":{}}\ncommit'
+    )
+    assert error is None
+    assert parsed["action"] == "show"
+    assert parsed["domain"] == "chassis"
+    assert parsed["sub_domain"] == "led"
+    assert "repaired_full_command_action" in parsed["_parse_warnings"]
+    assert "stripped_trailing_text_after_json" in parsed["_parse_warnings"]
+
+
+def test_full_set_command_repairs_frame_and_extracts_parameters():
+    parsed, error = parse_semantic_json(
+        '{"action":"set ethernet-switching-options secure-access-port vlan HR mac-move-limit 2", '
+        '"domain":"set ethernet-switching-options secure-access-port vlan HR mac-move-limit 2", '
+        '"sub_domain":"set ethernet-switching-options secure-access-port vlan HR mac-move-limit 2", '
+        '"parameters":{}}\ncommit'
+    )
+    assert error is None
+    assert parsed["action"] == "set"
+    assert parsed["domain"] == "ethernet-switching-options"
+    assert parsed["sub_domain"] == "secure-access-port"
+    assert parsed["parameters"]["vlan_name"] == "HR"
+    assert parsed["parameters"]["limit"] == 2
+    assert "repaired_full_command_action" in parsed["_parse_warnings"]
+    assert "inferred_domain_sub_domain" in parsed["_parse_warnings"]
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
