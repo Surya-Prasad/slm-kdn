@@ -1,0 +1,366 @@
+[
+  {
+    "query": "how to disable the OSPF protocol",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "set protocols ospf disable"
+    ],
+    "forbidden_top1_phrases": [
+      "set interfaces <interface-name> disable",
+      "show ospf interface",
+      "show ospf route"
+    ],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
+      "The LCD panel on the front panel of EX Series switches displays a variety of information about the switch in the Status menu and provides the Maintenance menu to enable you to perform basic operations such as initial setup and reboot. You c",
+      "Before you disconnect a fiber-optic cable from an optical transceiver, ensure that you have taken the necessary precautions for safe handling of lasers. See \u201cLaser and LED Safety Guidelines and Warnings\u201d on page 223. Ensure that you have th",
+      "Table 6: LCD Panel Menu Options (continued) DescriptionMenu If you do not want users to use Maintenance menu options, disable the entire menu or individual menu options. See \u201cConfiguring the LCD Panel on EX Series Switches (CLI Procedure)\u201d ",
+      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.4134943418286851,
+        "dense": 0.12805739026375673,
+        "lexical": 0.07664520105618738
+      },
+      {
+        "score": 0.3896955090294631,
+        "dense": 0.09946688535370538,
+        "lexical": 0.10293741825766663
+      },
+      {
+        "score": 0.2003276986919479,
+        "dense": 0.03988410491920162,
+        "lexical": 0.0691911327931309
+      },
+      {
+        "score": 0.1387141629714909,
+        "dense": 0.0323188177511336,
+        "lexical": 0.04110763852729416
+      },
+      {
+        "score": 0.13795305926941406,
+        "dense": 0.027452915030098102,
+        "lexical": 0.04766602599861507
+      }
+    ]
+  },
+  {
+    "query": "Clear all MAC address entries in the ethernet switching table",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "clear ethernet-switching-table"
+    ],
+    "forbidden_top1_phrases": [
+      "clear ethernet-switching port-error",
+      "clear ethernet-switching bpdu-error"
+    ],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "Table 38: Health Status (continued) DescriptionField Indicates the status of the fans in the fan tray. The possible values are OK, Failed, and Absent.Fan Status Capacity Utilization Panel Table 39: Capacity Utilization DescriptionField Indi",
+      "ge-0/0/21 { unit 0 { family ethernet-switching; } } ge-0/0/22 { unit 0 { family ethernet-switching; } } ge-0/0/23 { unit 0 { family ethernet-switching; } } ge-0/1/0 { unit 0 { family ethernet-switching; } } xe-0/1/0 { unit 0 { family ethern",
+      "unit 0 { family ethernet-switching; } } ge-0/0/13 { unit 0 { family ethernet-switching; } } ge-0/0/14 { unit 0 { family ethernet-switching; } } ge-0/0/15 { unit 0 { family ethernet-switching; } } ge-0/0/16 { unit 0 { family ethernet-switchi",
+      "family ethernet-switching; } } ge-0/0/4 { unit 0 { family ethernet-switching; } } ge-0/0/5 { unit 0 { family ethernet-switching; } } ge-0/0/6 { unit 0 { family ethernet-switching; } } ge-0/0/7 { unit 0 { family ethernet-switching; } } ge-0/",
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.348160454452573,
+        "dense": 0.20397990788861123,
+        "lexical": 0.12685235720389443
+      },
+      {
+        "score": 0.29250000000000004,
+        "dense": 0.3213615049760638,
+        "lexical": 0.0
+      },
+      {
+        "score": 0.2826128903709523,
+        "dense": 0.3104988163256224,
+        "lexical": 0.0
+      },
+      {
+        "score": 0.2772486431358748,
+        "dense": 0.3046052690964661,
+        "lexical": 0.0
+      },
+      {
+        "score": 0.23541545524235807,
+        "dense": 0.20897130574239345,
+        "lexical": 0.035293745569627485
+      }
+    ]
+  },
+  {
+    "query": "Display information about OSPF neighbors",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "show ospf neighbor"
+    ],
+    "forbidden_top1_phrases": [
+      "show lldp neighbors",
+      "show lldp neighbor"
+    ],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "Table 50: Chassis Viewer for EX8216 Switches (continued) DescriptionField In the image, click any line card or RE module to display the front view of the selected component. In the image, the colors listed below denote the interface status:",
+      "Table 48: Chassis Viewer for EX6210 Switches (continued) DescriptionField Mouse over the power supply icons to display name, status, and description information.Power supplies LCD panel configured for the LEDs on the ports. Mouse over the i",
+      "Table 49: Chassis Viewer for EX8208 Switches (continued) DescriptionField Slots on the switch are labeled, from the top of the switch down: \u2022 0\u20133 (line cards) \u2022 SRE0, SF, SRE1 (SRE and SF modules) \u2022 4\u20137 (line cards) Slot numbers The active ",
+      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe",
+      "Table 42: Chassis Viewer for EX3200, EX3300, and EX4200 Switches (continued) DescriptionField In the image, the following colors denote the interface status: \u2022 Green\u2014Interface is up and operational. \u2022 Yellow\u2014Interface is up but is nonoperat"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.45499999999999996,
+        "dense": 0.13367683093088217,
+        "lexical": 0.09325614308773802
+      },
+      {
+        "score": 0.31543889456363944,
+        "dense": 0.0991747637482401,
+        "lexical": 0.05648929938828239
+      },
+      {
+        "score": 0.2918165771077577,
+        "dense": 0.09211297712741366,
+        "lexical": 0.05180047752418601
+      },
+      {
+        "score": 0.2252055947551802,
+        "dense": 0.0673906997467085,
+        "lexical": 0.044617833163647806
+      },
+      {
+        "score": 0.21303486687869116,
+        "dense": 0.06735015337857927,
+        "lexical": 0.03768416268758145
+      }
+    ]
+  },
+  {
+    "query": "create SNMP community with the name CAMPUS-COMMUNITY and set authorization to read only",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "read-only"
+    ],
+    "forbidden_top1_phrases": [
+      "read-write"
+    ],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "\u2022 Use the automatically created VLAN default for management\u2014Select this option to configure all data interfaces as members of the default VLAN. Specify the management IP address and the default gateway. \u2022 Create a new VLAN for management\u2014Se",
+      "5. Enable services such as SSH and Telnet. NOTE: You will not be able to log in to the switch as the root user through Telnet. Root login is allowed only through SSH. \u2022 The default option for SSH is yes. Select this to enable SSH. \u2022 The def",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention Configure the machine\u2019s domain name: [edit] root@# set system domain-name domain-name Represents variables (options for which you substitute a value) in commands",
+      "Compliance Statements for EMC Requirements for EX Series Switches | 255 Canada | 256 Taiwan | 257 European Community | 257 Israel | 257 Japan | 257 Korea | 258 United States | 258 FCC Part 15 Statement | 258 Nonregulatory Environmental Stan",
+      "covered under warranty, and need post-sales technical support, you can access our tools and resources online or open a case with JTAC. \u2022 JTAC policies\u2014For a complete understanding of our JTAC procedures and policies, review the JTAC User Gu"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.45412126966508193,
+        "dense": 0.09316638700743701,
+        "lexical": 0.09941650767993175
+      },
+      {
+        "score": 0.449167210438656,
+        "dense": 0.0934471214358694,
+        "lexical": 0.09584804264472692
+      },
+      {
+        "score": 0.30413475765952735,
+        "dense": 0.0701453764575304,
+        "lexical": 0.05174053536844999
+      },
+      {
+        "score": 0.19044069135783148,
+        "dense": 0.050441661908146036,
+        "lexical": 0.01991549196569693
+      },
+      {
+        "score": 0.17771276624245197,
+        "dense": 0.03363601941101573,
+        "lexical": 0.044311156457590005
+      }
+    ]
+  },
+  {
+    "query": "Display IGMP snooping detailed flows information",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "show igmp-snooping flows detail"
+    ],
+    "forbidden_top1_phrases": [],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm",
+      "Table 50: Chassis Viewer for EX8216 Switches (continued) DescriptionField In the image, click any line card or RE module to display the front view of the selected component. In the image, the colors listed below denote the interface status:",
+      "Table 49: Chassis Viewer for EX8208 Switches (continued) DescriptionField Slots on the switch are labeled, from the top of the switch down: \u2022 0\u20133 (line cards) \u2022 SRE0, SF, SRE1 (SRE and SF modules) \u2022 4\u20137 (line cards) Slot numbers The active ",
+      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.3078705753882464,
+        "dense": 0.06746103859981897,
+        "lexical": 0.05705261498480313
+      },
+      {
+        "score": 0.29250000000000004,
+        "dense": 0.13573829323951664,
+        "lexical": 0.0
+      },
+      {
+        "score": 0.2883752338068507,
+        "dense": 0.0735190564952656,
+        "lexical": 0.04562465843425982
+      },
+      {
+        "score": 0.27413112071508233,
+        "dense": 0.06934018249811066,
+        "lexical": 0.04378523547278932
+      },
+      {
+        "score": 0.21673575609511125,
+        "dense": 0.05072991412109569,
+        "lexical": 0.03771398305051912
+      }
+    ]
+  },
+  {
+    "query": "Notify all logged users when any emergency level event occurs",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [
+      "set system syslog user * any emergency"
+    ],
+    "forbidden_top1_phrases": [
+      "show log user",
+      "kernel any",
+      "ntp any"
+    ],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "NOTE: By default, the View Events page in the J-Web interface displays the most recent 25 events, with severity levels highlighted in different colors. After you specify the filters, Event Summary displays the events matching the specified ",
+      "Warning Statement for Norway and Sweden WARNING: The equipment must be connected to an earthed mains socket-outlet. Advarsel Apparatet skal kobles til en jordet stikkontakt. Varning! Apparaten skall anslutas till jordat n\u00e4tuttag. Fire Safet",
+      "Table 56: Viewing System Log Messages (continued) Additional InformationFunctionField The event ID begins with a prefix that indicates the generating software process. Some processes on a switch do not use codes. This field might be blank i",
+      "United States | 258 FCC Part 15 Statement | 258 Nonregulatory Environmental Standards | 259 This topic applies to hardware devices in the EX Series product family, which includes EX Series switches, the EX Series Redundant Power System (RPS",
+      "Table 55: Filtering System Log Messages (continued) Your ActionFunctionField To generate a raw report: 1. Click Generate Raw Report. The Opening filteredEvents.html window appears. 2. Select Open with to open the HTML file or select Save Fi"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.4523394071765742,
+        "dense": 0.1378028135882941,
+        "lexical": 0.09034137301303534
+      },
+      {
+        "score": 0.42055033046795764,
+        "dense": 0.1390677802139591,
+        "lexical": 0.07118918565691203
+      },
+      {
+        "score": 0.3802537321750196,
+        "dense": 0.11787862505888577,
+        "lexical": 0.07356327879599636
+      },
+      {
+        "score": 0.23365655476566735,
+        "dense": 0.07099349592113195,
+        "lexical": 0.04688666062423658
+      },
+      {
+        "score": 0.23101270733210924,
+        "dense": 0.07017831872131995,
+        "lexical": 0.046370023258748096
+      }
+    ]
+  },
+  {
+    "query": "Show LCD active menu items",
+    "passed": true,
+    "error": null,
+    "expected_phrases": [],
+    "forbidden_top1_phrases": [],
+    "top5_sources": [
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf",
+      "ex3300.pdf"
+    ],
+    "top5_previews": [
+      "The LCD panel on the front panel of EX Series switches displays a variety of information about the switch in the Status menu and provides the Maintenance menu to enable you to perform basic operations such as initial setup and reboot. You c",
+      "LCD Panel Menus The LCD panel has three menus: Idle, Status, and Maintenance. Toggle between the LCD panel menus by pressing the Menu button. Navigate through the menu options by pressing the Enter button. Table 6 on page 29 describes the L",
+      "Table 6: LCD Panel Menu Options (continued) DescriptionMenu MAINT (Maintenance Menu) 31",
+      "Table 6: LCD Panel Menu Options (continued) DescriptionMenu The Status menu has the following options: \u2022 Show VCP status\u2014Choose one of the following: \u2022 Press the Enter button to display the Virtual Chassis port (VCP) status: Up, Down, Disab",
+      "Figure 4: Rear Panel of an EX3300 Switch with a DC Power Supply g021203 DC power terminals Air exhaust with fan Serial number ID label USB port Management Ethernet port Console RPS portport Protective earthing terminal ESD point LCD Panel i"
+    ],
+    "top5_scores": [
+      {
+        "score": 0.8496164865006316,
+        "dense": 0.3561174060142168,
+        "lexical": 0.1882854047009414
+      },
+      {
+        "score": 0.7301187823571277,
+        "dense": 0.26124676544353803,
+        "lexical": 0.18857468845558908
+      },
+      {
+        "score": 0.6740278833267396,
+        "dense": 0.22642023918728196,
+        "lexical": 0.17946040758542212
+      },
+      {
+        "score": 0.6155273409362192,
+        "dense": 0.20668256728134637,
+        "lexical": 0.15414654617311385
+      },
+      {
+        "score": 0.6002443200520516,
+        "dense": 0.2104997663758953,
+        "lexical": 0.1389802070967601
+      }
+    ]
+  }
+]

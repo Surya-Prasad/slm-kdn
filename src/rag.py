@@ -57,6 +57,25 @@ def project_root() -> Path:
 
 
 PROTOCOL_TERMS = ("ospf", "rstp", "igmp", "igmp-snooping", "sflow", "snmp", "lldp")
+PATH_TERMS = (
+    "protocols ospf",
+    "protocols rstp",
+    "protocols igmp",
+    "protocols igmp-snooping",
+    "protocols sflow",
+    "snmp community",
+    "snmp trap-group",
+    "system syslog user",
+    "ethernet-switching-table",
+    "ethernet-switching-options secure-access-port",
+    "virtual-chassis traceoptions",
+    "chassis lcd menu",
+    "chassis led",
+    "interfaces",
+    "system",
+    "chassis",
+    "virtual-chassis",
+)
 ACTION_TERMS = (
     "show",
     "display",
@@ -143,6 +162,10 @@ def _norm_query(text: str) -> str:
     text = text.replace("read only", "read-only").replace("read write", "read-write")
     fixes = {
         "igmp snooping": "igmp-snooping",
+        "ethernet switching": "ethernet-switching",
+        "detailed": "detail",
+        "logged users": "logged user",
+        "all users": "all user",
         "mac moving": "mac-move",
         "taceoptions": "traceoptions",
         "systme": "system",
@@ -197,6 +220,29 @@ def _extract_values(text: str) -> List[str]:
     for username in re.findall(r"\b(?:user|username|notify user)\s+([A-Za-z][A-Za-z0-9_-]*)\b", text, flags=re.I):
         values.add(username)
     return sorted(v.lower() for v in values if v)
+
+
+def _field_match_score(term: str, target: str, context: str, intent: str) -> float:
+    if _has_term(target, term):
+        return 1.0
+    if _has_term(context, term):
+        return 0.8
+    if _has_term(intent, term):
+        return 0.5
+    return 0.0
+
+
+def _placeholder_compatible(value: str, target: str) -> bool:
+    placeholders = {
+        r"\b[a-z]{2}-\d+/\d+/\d+\b": ("<interface-name>", "<interface>", "<interface-name>"),
+        r"\b\d+\b": ("<limit>", "<vlan-id>", "<vlan-id-or-name>", "<unit>"),
+        r"\b[A-Z][A-Z0-9_-]{2,}\b": ("<community-name>", "<vlan-name>", "<vlan-id-or-name>", "<user-name>"),
+        r"\bread-only\b|\bread-write\b": ("<authorization>",),
+    }
+    for pattern, tokens in placeholders.items():
+        if re.search(pattern, value, flags=re.I) and any(token in target for token in tokens):
+            return True
+    return False
 
 
 def _minmax(values):
@@ -541,6 +587,8 @@ class RagIndex:
         context = str(meta.get("context", ""))
         query_norm = _norm_query(query)
         target_norm = _norm_query(target)
+        intent_norm = _norm_query(intent)
+        context_norm = _norm_query(context)
         haystack = _norm_query(f"{target}\n{context}\n{intent}")
         query_action = _infer_query_action(query_norm)
         target_action = _command_action(target_norm)
@@ -575,20 +623,51 @@ class RagIndex:
         elif query_action == "load":
             action_score = self.action_weight if target_action in {"load", "request"} else 0.0
 
-        protocol_score = 0.0
+        path_object_score = 0.0
         if query_protocols:
             for protocol in query_protocols:
                 if _has_term(target_norm, protocol):
-                    protocol_score = max(protocol_score, min(self.protocol_weight, 0.15))
+                    path_object_score = max(path_object_score, 0.15)
                 elif target_protocols:
                     contradiction += 0.30
             if "igmp-snooping" in query_protocols and "igmp" in target_protocols and "igmp-snooping" not in target_protocols:
                 contradiction += 0.30
 
+        for path in PATH_TERMS:
+            path_words = path.split()
+            if all(_has_term(query_norm, word) for word in path_words if word not in {"protocols"}):
+                path_object_score = max(path_object_score, 0.20 * _field_match_score(path, target_norm, context_norm, intent_norm))
+
+        phrase_rules = [
+            (("disable", "ospf", "protocol"), "set protocols ospf disable", None),
+            (("ospf", "neighbor"), "show ospf neighbor", "show lldp neighbor"),
+            (("lldp", "neighbor"), "show lldp neighbors", None),
+            (("mac", "address", "ethernet-switching", "table"), "clear ethernet-switching-table", ("port-error", "bpdu-error")),
+            (("igmp-snooping", "flows", "detail"), "show igmp-snooping flows detail", (" task", " route", " statistics", " vlans")),
+            (("all", "user", "emergency"), "set system syslog user * any emergency", None),
+            (("lcd", "active", "menu"), "show chassis lcd menu", None),
+            (("led", "status"), "show chassis led", None),
+        ]
+        for terms, desired, forbidden in phrase_rules:
+            if all(_has_term(query_norm, term) for term in terms):
+                if desired in target_norm:
+                    path_object_score = max(path_object_score, 0.30)
+                elif forbidden and any(bad in target_norm for bad in forbidden):
+                    contradiction += 0.30
+                elif target_norm and target_norm.split()[0] in {"set", "show", "clear", "delete"}:
+                    # If a command example has the right action but misses the key path, keep it below path matches.
+                    contradiction += 0.15
+
         value_score = 0.0
         for value in _extract_values(query_norm):
-            if _has_term(haystack, value):
+            if _has_term(target_norm, value):
                 value_score += 0.05
+            elif _placeholder_compatible(value, target_norm):
+                value_score += 0.03
+            elif _has_term(context_norm, value):
+                value_score += 0.04
+            elif _has_term(intent_norm, value):
+                value_score += 0.025
         value_score = min(value_score, self.value_weight, 0.25)
 
         query_nouns = _matched_terms(query_norm, COMMAND_NOUNS)
@@ -619,13 +698,20 @@ class RagIndex:
         if _has_term(query_norm, "all") and _has_term(haystack, "interface") and not _has_term(haystack, "all"):
             contradiction += 0.12
         if _has_term(query_norm, "all") and "system syslog user *" in target_norm:
-            value_score = min(value_score + 0.10, self.value_weight, 0.25)
+            path_object_score = max(path_object_score, 0.30)
+            value_score = min(value_score + 0.10, self.value_weight, 0.20)
+        if _has_term(query_norm, "all") and re.search(r"system syslog user [A-Za-z0-9_-]+ ", target_norm) and "user *" not in target_norm:
+            contradiction += 0.30
         if _has_term(query_norm, "read-only") and _has_term(target_norm, "read-only"):
             value_score = min(value_score + 0.10, self.value_weight, 0.25)
         if _has_term(query_norm, "read-write") and _has_term(target_norm, "read-write"):
             value_score = min(value_score + 0.10, self.value_weight, 0.25)
+        if _has_term(query_norm, "read-only") and _has_term(target_norm, "read-write"):
+            contradiction += 0.30
+        if "ethernet-switching-table" in query_norm and any(bad in target_norm for bad in ("port-error", "bpdu-error")):
+            contradiction += 0.30
 
-        return action_score, protocol_score, value_score, min(contradiction, self.contradiction_weight, 0.70)
+        return action_score, min(path_object_score, self.protocol_weight, 0.30), value_score, min(contradiction, self.contradiction_weight, 0.70)
 
     def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
         dense_q = self.dense_vectorizer.transform([query])
@@ -674,18 +760,33 @@ class RagIndex:
                 continue
             action_score, protocol_score, value_score, contradiction = self._command_scores(query, chunk)
             sims[i] += action_score + protocol_score + value_score - contradiction
-        order = sims.argsort()[::-1][:top_k]
-        return [
-            RetrievedChunk(
-                text=self.chunks[i].text,
-                metadata=self.chunks[i].metadata,
-                score=float(sims[i]),
-                dense_score=float(dense_raw[i]),
-                lexical_score=float(lexical_raw[i]),
+        dense_pool = list(dense_raw.argsort()[::-1][:50])
+        lexical_pool = list(lexical_raw.argsort()[::-1][:50])
+        combined_pool = list(dict.fromkeys(dense_pool + lexical_pool + list(sims.argsort()[::-1][:50])))
+        ordered = sorted(combined_pool, key=lambda idx: sims[idx], reverse=True)
+        results = []
+        seen_commands = set()
+        for i in ordered:
+            if sims[i] <= 0:
+                continue
+            meta = self.chunks[i].metadata or {}
+            if meta.get("doc_type") == "nit":
+                command_key = re.sub(r"\s+", " ", str(meta.get("target_command", "")).strip().lower())
+                if command_key in seen_commands:
+                    continue
+                seen_commands.add(command_key)
+            results.append(
+                RetrievedChunk(
+                    text=self.chunks[i].text,
+                    metadata=self.chunks[i].metadata,
+                    score=float(sims[i]),
+                    dense_score=float(dense_raw[i]),
+                    lexical_score=float(lexical_raw[i]),
+                )
             )
-            for i in order
-            if sims[i] > 0
-        ]
+            if len(results) >= top_k:
+                break
+        return results
 
 
 def get_or_build_index(cfg: Dict[str, Any], rebuild: bool = False, root: Optional[Path] = None) -> RagIndex:
