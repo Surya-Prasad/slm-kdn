@@ -24,8 +24,12 @@ rag:
   chunk_overlap: 300
   top_k: 5
   max_features: 50000
-  dense_weight: 0.65
-  lexical_weight: 0.35
+  dense_weight: 0.45
+  lexical_weight: 0.25
+  action_weight: 0.20
+  protocol_weight: 0.20
+  value_weight: 0.25
+  contradiction_weight: 0.40
   rag_doc_boost: 0.15
 
 training:

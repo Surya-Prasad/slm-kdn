@@ -57,15 +57,40 @@ def project_root() -> Path:
 
 
 PROTOCOL_TERMS = ("ospf", "rstp", "igmp", "igmp-snooping", "sflow", "snmp", "lldp")
-ACTION_TERMS = ("show", "display", "set", "enable", "disable", "delete", "remove", "clear", "trace", "notify")
+ACTION_TERMS = (
+    "show",
+    "display",
+    "get",
+    "determine",
+    "set",
+    "configure",
+    "enable",
+    "create",
+    "make",
+    "put",
+    "block",
+    "notify",
+    "disable",
+    "delete",
+    "remove",
+    "clear",
+    "override",
+    "load",
+    "restore",
+    "trace",
+)
 COMMAND_NOUNS = (
     "neighbor",
     "neighbors",
     "interface",
     "route",
+    "flow",
+    "flows",
+    "detail",
     "syslog",
     "trap-group",
     "community",
+    "authorization",
     "mac",
     "vlan",
     "telemetry",
@@ -112,6 +137,76 @@ def _matched_terms(text: str, terms: Iterable[str]) -> List[str]:
 
 def _is_hardware_query(query: str) -> bool:
     return bool(_matched_terms(query, HARDWARE_TERMS))
+
+
+def _norm_query(text: str) -> str:
+    text = text.replace("read only", "read-only").replace("read write", "read-write")
+    fixes = {
+        "igmp snooping": "igmp-snooping",
+        "mac moving": "mac-move",
+        "taceoptions": "traceoptions",
+        "systme": "system",
+        "interfacs": "interfaces",
+        "dipslay": "display",
+    }
+    for bad, good in fixes.items():
+        text = re.sub(rf"\b{re.escape(bad)}\b", good, text, flags=re.I)
+    return text
+
+
+def _infer_query_action(query: str) -> str:
+    q = _norm_query(query)
+    action_groups = [
+        ("delete", ("remove", "delete")),
+        ("disable", ("disable",)),
+        ("clear", ("clear",)),
+        ("show", ("show", "display", "get", "determine")),
+        ("set", ("set", "configure", "enable", "create", "make", "put", "block", "notify")),
+        ("load", ("override", "load", "restore")),
+    ]
+    for action, terms in action_groups:
+        if any(_has_term(q, term) for term in terms):
+            return action
+    return ""
+
+
+def _command_action(command: str) -> str:
+    first = command.strip().split(maxsplit=1)[0].lower() if command.strip() else ""
+    if first in {"set", "delete", "show", "clear", "load", "request"}:
+        return first
+    return ""
+
+
+def _extract_values(text: str) -> List[str]:
+    text = _norm_query(text)
+    values = set()
+    patterns = [
+        r"\b[a-z]{2}-\d+/\d+/\d+\b",
+        r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+        r"\b\d{1,2}:\d{2}(?::\d{2})?\b",
+        r"\bvlan\s+([A-Za-z][A-Za-z0-9_-]*)\b",
+        r"\b[A-Z][A-Z0-9_-]{2,}\b",
+        r"\b\d+\b",
+    ]
+    for pattern in patterns:
+        for match in re.findall(pattern, text):
+            values.add(match if isinstance(match, str) else match[0])
+    for term in ("emergency", "kernel", "any", "all", "ingress", "egress", "read-only", "read-write"):
+        if _has_term(text, term):
+            values.add(term)
+    for username in re.findall(r"\b(?:user|username|notify user)\s+([A-Za-z][A-Za-z0-9_-]*)\b", text, flags=re.I):
+        values.add(username)
+    return sorted(v.lower() for v in values if v)
+
+
+def _minmax(values):
+    if len(values) == 0:
+        return values
+    low = float(values.min())
+    high = float(values.max())
+    if high <= low:
+        return values * 0
+    return (values - low) / (high - low)
 
 
 def _sha256_file(path: Path) -> str:
@@ -362,6 +457,10 @@ class RagIndex:
         rag_doc_boost: float = 0.0,
         dense_weight: float = 0.65,
         lexical_weight: float = 0.35,
+        action_weight: float = 0.20,
+        protocol_weight: float = 0.20,
+        value_weight: float = 0.25,
+        contradiction_weight: float = 0.40,
     ):
         self.chunks = chunks
         self.vectorizer = dense_vectorizer
@@ -374,6 +473,10 @@ class RagIndex:
         self.rag_doc_boost = rag_doc_boost
         self.dense_weight = dense_weight
         self.lexical_weight = lexical_weight
+        self.action_weight = action_weight
+        self.protocol_weight = protocol_weight
+        self.value_weight = value_weight
+        self.contradiction_weight = contradiction_weight
 
     @classmethod
     def build(cls, cfg: Dict[str, Any], root: Optional[Path] = None) -> "RagIndex":
@@ -412,6 +515,10 @@ class RagIndex:
             rag_doc_boost=float(rag_cfg.get("rag_doc_boost", 0.0)),
             dense_weight=float(rag_cfg.get("dense_weight", 0.65)),
             lexical_weight=float(rag_cfg.get("lexical_weight", 0.35)),
+            action_weight=float(rag_cfg.get("action_weight", 0.20)),
+            protocol_weight=float(rag_cfg.get("protocol_weight", 0.20)),
+            value_weight=float(rag_cfg.get("value_weight", 0.25)),
+            contradiction_weight=float(rag_cfg.get("contradiction_weight", 0.40)),
         )
 
     def save(self, path: Path) -> None:
@@ -424,80 +531,111 @@ class RagIndex:
         with path.open("rb") as f:
             return pickle.load(f)
 
-    def _command_rerank_adjustment(self, query: str, chunk: Document) -> float:
+    def _command_scores(self, query: str, chunk: Document) -> tuple[float, float, float, float]:
         meta = chunk.metadata or {}
         if meta.get("doc_type") != "nit":
-            return 0.0
+            return 0.0, 0.0, 0.0, 0.0
 
         target = str(meta.get("target_command", ""))
+        intent = str(meta.get("intent", ""))
         context = str(meta.get("context", ""))
-        haystack = f"{target}\n{context}"
-        query_protocols = _matched_terms(query, PROTOCOL_TERMS)
-        target_protocols = _matched_terms(target, PROTOCOL_TERMS)
-        query_actions = _matched_terms(query, ACTION_TERMS)
-        query_nouns = _matched_terms(query, COMMAND_NOUNS)
+        query_norm = _norm_query(query)
+        target_norm = _norm_query(target)
+        haystack = _norm_query(f"{target}\n{context}\n{intent}")
+        query_action = _infer_query_action(query_norm)
+        target_action = _command_action(target_norm)
+        query_protocols = _matched_terms(query_norm, PROTOCOL_TERMS)
+        target_protocols = _matched_terms(target_norm, PROTOCOL_TERMS)
 
-        boost = 0.0
-        for protocol in query_protocols:
-            if _has_term(target, protocol):
-                boost += 0.35
-            elif target_protocols:
-                boost -= 0.45
+        action_score = 0.0
+        contradiction = 0.0
+        if query_action == "show":
+            action_score = self.action_weight if target_action == "show" else 0.0
+            contradiction += 0.35 if target_action in {"set", "delete", "clear"} else 0.0
+        elif query_action == "set":
+            action_score = self.action_weight if target_action == "set" else 0.0
+            contradiction += 0.35 if target_action in {"show", "delete", "clear"} else 0.0
+        elif query_action == "disable":
+            if _has_term(target_norm, "disable"):
+                action_score = self.action_weight
+            elif target_action == "delete":
+                action_score = self.action_weight * 0.6
+            elif target_action == "show" or (target_action == "set" and not _has_term(target_norm, "disable")):
+                contradiction += 0.35
+        elif query_action == "delete":
+            if target_action == "delete":
+                action_score = self.action_weight
+            elif _has_term(target_norm, "disable"):
+                action_score = self.action_weight * 0.4
+            elif target_action in {"show", "set"}:
+                contradiction += 0.35
+        elif query_action == "clear":
+            action_score = self.action_weight if target_action == "clear" else 0.0
+            contradiction += 0.35 if target_action in {"show", "set", "delete"} else 0.0
+        elif query_action == "load":
+            action_score = self.action_weight if target_action in {"load", "request"} else 0.0
 
-        action_aliases = {
-            "display": ("show",),
-            "show": ("show",),
-            "disable": ("disable", "delete"),
-            "enable": ("enable", "set"),
-            "notify": ("syslog", "user"),
-            "remove": ("delete",),
-        }
-        for action in query_actions:
-            candidates = action_aliases.get(action, (action,))
-            if any(_has_term(target, candidate) for candidate in candidates):
-                boost += 0.2
+        protocol_score = 0.0
+        if query_protocols:
+            for protocol in query_protocols:
+                if _has_term(target_norm, protocol):
+                    protocol_score = max(protocol_score, min(self.protocol_weight, 0.15))
+                elif target_protocols:
+                    contradiction += 0.30
+            if "igmp-snooping" in query_protocols and "igmp" in target_protocols and "igmp-snooping" not in target_protocols:
+                contradiction += 0.30
 
+        value_score = 0.0
+        for value in _extract_values(query_norm):
+            if _has_term(haystack, value):
+                value_score += 0.05
+        value_score = min(value_score, self.value_weight, 0.25)
+
+        query_nouns = _matched_terms(query_norm, COMMAND_NOUNS)
         for noun in query_nouns:
             singular = noun[:-1] if noun.endswith("s") else noun
             if _has_term(haystack, noun) or _has_term(haystack, singular):
-                boost += 0.12
+                value_score = min(value_score + 0.03, self.value_weight, 0.25)
 
-        q_lower = query.lower()
-        target_lower = target.lower()
-        if _has_term(query, "ospf") and _has_term(query, "disable") and "set protocols ospf disable" in target_lower:
-            boost += 1.0
-        if _has_term(query, "ospf") and (_has_term(query, "neighbor") or _has_term(query, "neighbors")):
-            if "show ospf neighbor" in target_lower:
-                boost += 1.0
-            if "show lldp neighbor" in target_lower:
-                boost -= 0.8
-        if _has_term(query, "lldp") and (_has_term(query, "neighbor") or _has_term(query, "neighbors")):
-            if "show lldp neighbor" in target_lower:
-                boost += 0.8
-        if "igmp-snooping" in q_lower and _has_term(query, "disable") and "igmp-snooping" in target_lower:
-            if "traceoptions" in target_lower and "disable" in target_lower:
-                boost += 1.0
-            elif target_lower.startswith("show "):
-                boost -= 0.7
-        if _has_term(query, "notify") and _has_term(query, "emergency"):
-            if "system syslog user" in target_lower and "any emergency" in target_lower:
-                boost += 1.0
-            elif "security" in target_lower:
-                boost -= 0.4
+        opposites = (
+            ("enable", "disable"),
+            ("disable", "enable"),
+            ("read-only", "read-write"),
+            ("read-write", "read-only"),
+            ("ingress", "egress"),
+            ("egress", "ingress"),
+            ("interface", "vlan"),
+            ("vlan", "interface"),
+        )
+        for want, bad in opposites:
+            if _has_term(query_norm, want) and _has_term(haystack, bad) and not _has_term(haystack, want):
+                contradiction += 0.30
 
-        return boost
+        if _has_term(query_norm, "emergency"):
+            if _has_term(haystack, "emergency"):
+                value_score = min(value_score + 0.08, self.value_weight, 0.25)
+            elif any(_has_term(haystack, sev) for sev in ("critical", "panic", "warning")):
+                contradiction += 0.20
+        if _has_term(query_norm, "all") and _has_term(haystack, "interface") and not _has_term(haystack, "all"):
+            contradiction += 0.12
+        if _has_term(query_norm, "all") and "system syslog user *" in target_norm:
+            value_score = min(value_score + 0.10, self.value_weight, 0.25)
+        if _has_term(query_norm, "read-only") and _has_term(target_norm, "read-only"):
+            value_score = min(value_score + 0.10, self.value_weight, 0.25)
+        if _has_term(query_norm, "read-write") and _has_term(target_norm, "read-write"):
+            value_score = min(value_score + 0.10, self.value_weight, 0.25)
+
+        return action_score, protocol_score, value_score, min(contradiction, self.contradiction_weight, 0.70)
 
     def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
         dense_q = self.dense_vectorizer.transform([query])
         lexical_q = self.lexical_vectorizer.transform([query])
-        dense_scores = cosine_similarity(dense_q, self.dense_matrix).ravel()
-        lexical_scores = cosine_similarity(lexical_q, self.lexical_matrix).ravel()
+        dense_raw = cosine_similarity(dense_q, self.dense_matrix).ravel()
+        lexical_raw = cosine_similarity(lexical_q, self.lexical_matrix).ravel()
+        dense_scores = _minmax(dense_raw)
+        lexical_scores = _minmax(lexical_raw)
         sims = (self.dense_weight * dense_scores) + (self.lexical_weight * lexical_scores)
         hardware_query = _is_hardware_query(query)
-        if self.rag_doc_boost and hardware_query:
-            for i, chunk in enumerate(self.chunks):
-                if chunk.metadata.get("doc_type") == "rag-doc":
-                    sims[i] += self.rag_doc_boost
         if not hardware_query:
             for i, chunk in enumerate(self.chunks):
                 if chunk.metadata.get("doc_type") == "rag-doc":
@@ -513,32 +651,37 @@ class RagIndex:
             t_lower = text.lower()
             if "led" in q_lower and any(term in q_lower for term in ("interpret", "alm", "sys", "mst", "status")):
                 if "table 7: chassis status leds" in t_lower:
-                    sims[i] += 0.6
+                    sims[i] += 0.15
                 elif "chassis status leds in ex3300" in t_lower:
-                    sims[i] += 0.2
+                    sims[i] += 0.10
                 if "chassis physical specifications" in t_lower:
                     sims[i] *= 0.5
                 if text.count("ALM") > 4 and "Table 7: Chassis Status LEDs" not in text:
                     sims[i] *= 0.45
             if "console" in q_lower:
                 if "console port connector pinout information" in t_lower or "default baud rate" in t_lower:
-                    sims[i] += 0.25
+                    sims[i] += 0.15
                 if "to connect and configure the switch from the console" in t_lower:
-                    sims[i] += 0.12
+                    sims[i] += 0.08
             if "power" in q_lower and "supply" in q_lower:
                 if "power supply in ex3300 switches" in t_lower or "power specifications for ex3300 switches" in t_lower:
-                    sims[i] += 0.25
+                    sims[i] += 0.15
                 if "connecting dc power" in t_lower:
                     sims[i] *= 0.8
-            sims[i] += self._command_rerank_adjustment(query, chunk)
+            if chunk.metadata.get("doc_type") == "rag-doc":
+                if hardware_query:
+                    sims[i] += 0.15
+                continue
+            action_score, protocol_score, value_score, contradiction = self._command_scores(query, chunk)
+            sims[i] += action_score + protocol_score + value_score - contradiction
         order = sims.argsort()[::-1][:top_k]
         return [
             RetrievedChunk(
                 text=self.chunks[i].text,
                 metadata=self.chunks[i].metadata,
                 score=float(sims[i]),
-                dense_score=float(dense_scores[i]),
-                lexical_score=float(lexical_scores[i]),
+                dense_score=float(dense_raw[i]),
+                lexical_score=float(lexical_raw[i]),
             )
             for i in order
             if sims[i] > 0

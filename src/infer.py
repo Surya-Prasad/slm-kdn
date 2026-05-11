@@ -207,7 +207,9 @@ def main(a):
                         "predicted_command": row.get("prediction", ""),
                         "exact_match": exact,
                         "retrieved_sources": row.get("rag_sources", []),
-                        "retrieved_context_previews": row.get("rag_context_previews", []),
+                        "retrieved_previews": row.get("rag_context_previews", []),
+                        "retrieved_dense_scores": [source.get("dense_score") for source in row.get("rag_sources", [])],
+                        "retrieved_lexical_scores": [source.get("lexical_score") for source in row.get("rag_sources", [])],
                         "retrieved_scores": [
                             {
                                 "source_file": source.get("source_file"),
@@ -218,7 +220,7 @@ def main(a):
                             }
                             for source in row.get("rag_sources", [])
                         ],
-                        "prompt": row.get("rag_prompt"),
+                        "final_prompt": row.get("rag_prompt"),
                     }
                 )
             write_jsonl(failure_file, failures[:10])

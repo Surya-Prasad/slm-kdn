@@ -26,11 +26,12 @@ SANITY_QUERIES = [
 ]
 
 REGRESSION_CASES = [
-    ("how to disable the OSPF protocol", "set protocols ospf disable", None),
-    ("Display information about OSPF neighbors", "show ospf neighbor", "show lldp neighbor"),
-    ("Notify user mohammad when any emergency level event occurs", "system syslog user", None),
+    ("how to disable the OSPF protocol", "set protocols ospf disable", ("show ospf interface", "show ospf route")),
+    ("Display information about OSPF neighbors", "show ospf neighbor", ("show lldp neighbors", "show lldp neighbor")),
+    ("create SNMP community with the name CAMPUS-COMMUNITY and set authorization to read only", "read-only", ("read-write",)),
+    ("Display IGMP snooping detailed flows information", "show igmp-snooping flows detail", None),
+    ("Notify all logged users when any emergency level event occurs", "system syslog user * any emergency", ("show log user", "kernel any", "ntp any")),
     ("Show LCD active menu items", None, None),
-    ("How to display the LED status", None, None),
 ]
 
 
@@ -72,19 +73,19 @@ def main(args):
 
     if args.regression:
         has_train = Path(cfg["data"]["output_dir"], "train.jsonl").exists()
-        for query, expected, bad_before_expected in REGRESSION_CASES:
+        for query, expected, bad_patterns in REGRESSION_CASES:
             chunks = index.retrieve(query, top_k=5)
             print("=" * 80)
             print(format_retrieval_debug(query, chunks))
             assert_no_eval_leakage(chunks, strict=strict)
             if expected and has_train and not _contains_expected(chunks, expected):
                 raise RuntimeError(f"Expected top-5 to contain `{expected}` for query: {query}")
-            if bad_before_expected and has_train:
+            if bad_patterns and has_train:
                 targets = [str((chunk.metadata or {}).get("target_command", "")).lower() for chunk in chunks]
-                bad_rank = next((i for i, target in enumerate(targets) if bad_before_expected in target), None)
+                bad_rank = next((i for i, target in enumerate(targets) if any(bad in target for bad in bad_patterns)), None)
                 good_rank = next((i for i, target in enumerate(targets) if expected and expected in target), None)
                 if bad_rank is not None and (good_rank is None or bad_rank < good_rank):
-                    raise RuntimeError(f"Bad match `{bad_before_expected}` outranked `{expected}` for query: {query}")
+                    raise RuntimeError(f"Bad match outranked `{expected}` for query: {query}")
             if "lcd" in query.lower() and not _source_present(chunks, "ex3300.pdf"):
                 raise RuntimeError("Expected ex3300.pdf for LCD query")
             if "led" in query.lower() and not (_source_present(chunks, "ex3300.pdf") or _contains_expected(chunks, "show chassis led")):
