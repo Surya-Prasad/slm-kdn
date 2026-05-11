@@ -25,6 +25,9 @@ def main(args):
     rows = read_jsonl(args.pred_file)
     summary = Counter()
     grouped_failures = Counter()
+    template_not_found_keys = Counter()
+    mismatch_templates = Counter()
+    stage_examples = {}
     failures = []
     entity_warning = None
 
@@ -36,12 +39,23 @@ def main(args):
         stage = failure_stage(row, expected)
         context = row.get("command_context") or {}
         warnings = row.get("context_warnings") or []
+        parsed = row.get("semantic_json") or {}
+        parsed_key = "/".join(
+            str(parsed.get(part, "")).lower()
+            for part in ("action", "domain", "sub_domain")
+        )
 
         summary["parse_errors"] += int(bool(row.get("semantic_parse_error")))
         summary["template_not_found"] += int(context.get("reason") == "template_not_found")
         summary["missing_parameters"] += int(str(row.get("assembly_error") or "").startswith("missing_parameter"))
         summary["guardrail_modifications"] += int(bool(row.get("guardrails_applied")))
         summary["commit_suppressed_for_operational_action"] += int("commit_suppressed_for_operational_action" in warnings)
+        summary["domain_equals_action"] += int(bool(parsed) and parsed.get("domain") == parsed.get("action"))
+        summary["sub_domain_gt_4_tokens"] += int(len(str(parsed.get("sub_domain", "")).split()) > 4)
+        if context.get("reason") == "template_not_found":
+            template_not_found_keys[parsed_key] += 1
+        if stage == "final_command_mismatch":
+            mismatch_templates[row.get("template_key") or parsed_key] += 1
 
         if extract_entities is not None:
             entities = extract_entities(row.get("intent", ""))
@@ -51,12 +65,28 @@ def main(args):
         if stage != "ok":
             key = f"{expected['action']}/{expected['domain']}/{expected['sub_domain']}"
             grouped_failures[key] += 1
-            failures.append({**row, "failure_stage": stage, "expected_template_key": expected["template_key"]})
+            failure_row = {**row, "failure_stage": stage, "expected_template_key": expected["template_key"]}
+            failures.append(failure_row)
+            stage_examples.setdefault(stage, [])
+            if len(stage_examples[stage]) < 5:
+                stage_examples[stage].append(
+                    {
+                        "intent": row.get("intent", ""),
+                        "prediction": row.get("prediction", ""),
+                        "target_command": row.get("target_command", ""),
+                        "template_key": row.get("template_key", ""),
+                        "parsed_key": parsed_key,
+                        "assembly_error": row.get("assembly_error"),
+                    }
+                )
 
     payload = {
         "total": len(rows),
         **dict(summary),
         "exact_match_failures_by_action_domain_sub_domain": dict(grouped_failures),
+        "top_template_not_found_keys": dict(template_not_found_keys.most_common(20)),
+        "top_final_command_mismatch_templates": dict(mismatch_templates.most_common(20)),
+        "examples_by_failure_stage": stage_examples,
     }
     if entity_warning:
         payload["warning"] = entity_warning

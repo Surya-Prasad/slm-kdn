@@ -144,8 +144,9 @@ def main(a):
         
         inputs = tok(prompts, return_tensors='pt', padding=True).to(model.device)
         
+        max_new_tokens = max(int(ic["max_new_tokens"]), 128) if a.semantic_rag else ic["max_new_tokens"]
         with torch.no_grad():
-            gens = model.generate(**inputs, max_new_tokens=ic["max_new_tokens"], do_sample=False)
+            gens = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
 
         for j, gen in enumerate(gens):
             text = tok.decode(gen, skip_special_tokens=True)
@@ -153,6 +154,8 @@ def main(a):
             row = {**batch_rows[j]}
             if a.semantic_rag:
                 parsed, parse_error = parse_semantic_json(raw_pred)
+                if parsed:
+                    parsed["_intent_context"] = f"{batch_rows[j].get('intent', '')} {batch_rows[j].get('context', '')}"
                 context = retrieve_command_context(parsed or {}) if parsed else {
                     "found": False,
                     "reason": "semantic_parse_error",

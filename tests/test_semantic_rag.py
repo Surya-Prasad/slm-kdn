@@ -18,7 +18,7 @@ def seed_store():
     rag_store._TEMPLATE_STORE.clear()
     rag_store._TEMPLATE_STORE.update(
         {
-            ("show", "chassis", "led"): TemplateRecord(
+            ("show", "chassis", "led", "plain"): TemplateRecord(
                 action="show",
                 domain="chassis",
                 sub_domain="led",
@@ -26,7 +26,7 @@ def seed_store():
                 mode="operational",
                 requires_commit=False,
             ),
-            ("clear", "ethernet-switching", "table"): TemplateRecord(
+            ("clear", "ethernet-switching", "table", "plain"): TemplateRecord(
                 action="clear",
                 domain="ethernet-switching",
                 sub_domain="table",
@@ -34,7 +34,7 @@ def seed_store():
                 mode="operational",
                 requires_commit=False,
             ),
-            ("set", "protocols", "ospf"): TemplateRecord(
+            ("set", "protocols", "ospf", "plain"): TemplateRecord(
                 action="set",
                 domain="protocols",
                 sub_domain="ospf",
@@ -128,6 +128,41 @@ def test_full_set_command_repairs_frame_and_extracts_parameters():
     assert parsed["parameters"]["limit"] == 2
     assert "repaired_full_command_action" in parsed["_parse_warnings"]
     assert "inferred_domain_sub_domain" in parsed["_parse_warnings"]
+
+
+def test_sflow_traceoptions_bad_domain_repairs_to_protocol_key():
+    parsed, error = parse_semantic_json(
+        '{"action":"set protocols sflow traceoptions flag all", "domain":"set", "sub_domain":"set protocols sflow traceoptions flag all", "parameters":{}}'
+    )
+    assert error is None
+    assert f"{parsed['action']}/{parsed['domain']}/{parsed['sub_domain']}" == "set/protocols/sflow"
+    assert parsed["parameters"]["flag"] == "all"
+
+
+def test_virtual_chassis_traceoptions_bad_domain_repairs_key():
+    parsed, error = parse_semantic_json(
+        '{"action":"set virtual-chassis traceoptions flag csn", "domain":"set", "sub_domain":"set virtual-chassis traceoptions flag csn", "parameters":{}}'
+    )
+    assert error is None
+    assert f"{parsed['action']}/{parsed['domain']}/{parsed['sub_domain']}" == "set/virtual-chassis/traceoptions"
+    assert parsed["parameters"]["flag"] == "csn"
+
+
+def test_show_configuration_protocols_sflow_repairs_key_and_protocol_param():
+    parsed, error = parse_semantic_json(
+        '{"action":"show configuration protocols sflow", "domain":"show configuration protocols sflow", "sub_domain":"show configuration protocols sflow", "parameters":{}}'
+    )
+    assert error is None
+    assert f"{parsed['action']}/{parsed['domain']}/{parsed['sub_domain']}" == "show/configuration/protocols"
+    assert parsed["parameters"]["protocol"] == "sflow"
+
+
+def test_clear_ethernet_switching_table_repairs_key():
+    parsed, error = parse_semantic_json(
+        '{"action":"clear ethernet-switching-table", "domain":"clear ethernet-switching-table", "sub_domain":"clear ethernet-switching-table", "parameters":{}}'
+    )
+    assert error is None
+    assert f"{parsed['action']}/{parsed['domain']}/{parsed['sub_domain']}" == "clear/ethernet-switching/table"
 
 
 if __name__ == "__main__":

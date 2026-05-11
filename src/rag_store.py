@@ -20,6 +20,7 @@ class TemplateRecord:
     intent_examples: List[str] = field(default_factory=list)
     negative_rules: List[str] = field(default_factory=list)
     validation_rules: Dict[str, object] = field(default_factory=dict)
+    variant: str = "plain"
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -35,10 +36,11 @@ class TemplateRecord:
             "intent_examples": list(self.intent_examples),
             "negative_rules": list(self.negative_rules),
             "validation_rules": dict(self.validation_rules),
+            "variant": self.variant,
         }
 
 
-_TEMPLATE_STORE: Dict[tuple[str, str, str], TemplateRecord] = {}
+_TEMPLATE_STORE: Dict[tuple[str, str, str, str], TemplateRecord] = {}
 
 OPERATIONAL_ACTIONS = {"show", "clear", "request", "ping", "traceroute", "monitor"}
 CONFIGURATION_ACTIONS = {"set", "delete", "load"}
@@ -77,7 +79,7 @@ def load_datastore(filepath: str = "data/juniper_templates.json") -> None:
 
     records = payload.items() if isinstance(payload, dict) else [(None, item) for item in payload]
 
-    store: Dict[tuple[str, str, str], TemplateRecord] = {}
+    store: Dict[tuple[str, str, str, str], TemplateRecord] = {}
     for raw_key, entry in records:
         if not isinstance(entry, dict):
             continue
@@ -107,8 +109,9 @@ def load_datastore(filepath: str = "data/juniper_templates.json") -> None:
             intent_examples=list(entry.get("intent_examples", [])),
             negative_rules=list(entry.get("negative_rules", [])),
             validation_rules=dict(entry.get("validation_rules", {})),
+            variant=str(entry.get("variant", "plain") or "plain"),
         )
-        store[(action, domain, sub_domain)] = record
+        store[(action, domain, sub_domain, record.variant)] = record
 
     _TEMPLATE_STORE.clear()
     _TEMPLATE_STORE.update(store)
@@ -118,8 +121,14 @@ def retrieve_template(action: str, domain: str, sub_domain: str) -> Optional[Tem
     if not _TEMPLATE_STORE:
         load_datastore()
 
-    key = (_normalize_key(action), _normalize_key(domain), _normalize_key(sub_domain))
-    return _TEMPLATE_STORE.get(key)
+    key = (_normalize_key(action), _normalize_key(domain), _normalize_key(sub_domain), "plain")
+    if key in _TEMPLATE_STORE:
+        return _TEMPLATE_STORE[key]
+    matches = [
+        record for (a, d, s, _), record in _TEMPLATE_STORE.items()
+        if (a, d, s) == key[:3]
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def all_templates() -> List[TemplateRecord]:

@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from rag_store import CONFIGURATION_ACTIONS, OPERATIONAL_ACTIONS  # noqa: E402
+from semantic_parser import command_to_semantic_frame  # noqa: E402
 from utils import read_jsonl  # noqa: E402
 
 
@@ -40,38 +41,31 @@ def infer_requires_commit(action: str, mode: str, command_had_commit: bool) -> b
 
 
 def infer_domain_subdomain(body: str) -> tuple[str, str]:
-    toks = body.lower().split()
-    if not toks:
-        return "unknown", "unknown"
-    action = toks[0]
-    rest = toks[1:]
-    if action in {"ping", "traceroute"}:
-        return "network", action
-    if not rest:
-        return "unknown", "unknown"
-    if rest[:2] == ["protocols", "ospf"]:
-        return "protocols", "ospf"
-    if rest[:2] == ["protocols", "igmp-snooping"] or rest[:1] == ["igmp-snooping"]:
-        return "protocols", "igmp-snooping"
-    if rest[:2] == ["system", "syslog"]:
-        return "system", "syslog"
-    if rest[:2] == ["snmp", "community"]:
-        return "snmp", "community"
-    if rest[:2] == ["chassis", "lcd"]:
-        return "chassis", "lcd"
-    if rest[:2] == ["chassis", "pic-mode"]:
-        return "chassis", "pic-mode"
-    if rest[:1] == ["chassis"]:
-        return "chassis", rest[1] if len(rest) > 1 else "status"
-    if rest[:1] == ["ethernet-switching-table"]:
-        return "ethernet-switching", "table"
-    if rest[:1] == ["ethernet-switching"]:
-        return "ethernet-switching", rest[1] if len(rest) > 1 else "general"
-    if rest[:1] == ["interfaces"]:
-        return "interfaces", rest[2] if len(rest) > 2 and rest[2] != "unit" else "interface"
-    if rest[:1] == ["virtual-chassis"]:
-        return "virtual-chassis", rest[1] if len(rest) > 1 else "general"
-    return rest[0], rest[1] if len(rest) > 1 else "general"
+    frame = command_to_semantic_frame(body)
+    return str(frame.get("domain", "")), str(frame.get("sub_domain", ""))
+
+
+def command_variant(body: str) -> str:
+    return "display_set" if "| display set" in body.lower() else "plain"
+
+
+def plain_body_for_variant(body: str) -> str:
+    return re.sub(r"\s+\|\s+display\s+set\b.*$", "", body, flags=re.I).strip()
+
+
+def valid_key_fields(action: str, domain: str, sub_domain: str, body: str) -> bool:
+    body_norm = re.sub(r"\s+", " ", body.lower()).strip()
+    if not action or not domain or not sub_domain:
+        return False
+    if domain == action:
+        return False
+    if domain in body_norm and len(domain.split()) > 1:
+        return False
+    if sub_domain in body_norm and len(sub_domain.split()) > 4:
+        return False
+    if domain.startswith(action + " ") or sub_domain.startswith(action + " "):
+        return False
+    return True
 
 
 def parameterize(body: str) -> tuple[str, list[str]]:
@@ -93,6 +87,15 @@ def parameterize(body: str) -> tuple[str, list[str]]:
     if re.search(r"\bvlan(?:-id)?\s+\d+\b", template):
         params.append("vlan_id")
         template = re.sub(r"\b(vlan(?:-id)?)\s+\d+\b", r"\1 {vlan_id}", template, count=1)
+    if re.search(r"\bvlan\s+[A-Za-z][A-Za-z0-9_-]*\b", template):
+        params.append("vlan_name")
+        template = re.sub(r"\bvlan\s+[A-Za-z][A-Za-z0-9_-]*\b", "vlan {vlan_name}", template, count=1)
+    if re.search(r"\b(?:limit|mac-move-limit)\s+\d+\b", template):
+        params.append("limit")
+        template = re.sub(r"\b(limit|mac-move-limit)\s+\d+\b", r"\1 {limit}", template, count=1)
+    if re.search(r"\bflag\s+[A-Za-z0-9_-]+\b", template):
+        params.append("flag")
+        template = re.sub(r"\bflag\s+[A-Za-z0-9_-]+\b", "flag {flag}", template, count=1)
     if re.search(r"\bsnmp community [A-Za-z0-9_-]+\b", template):
         params.append("community")
         template = re.sub(r"\bsnmp community [A-Za-z0-9_-]+\b", "snmp community {community}", template, count=1)
@@ -128,49 +131,61 @@ def main(args):
         body, had_commit = split_commit(target)
         if not body:
             continue
-        action = body.split()[0].lower()
-        domain, sub_domain = infer_domain_subdomain(body)
-        mode = infer_mode(action)
-        requires_commit = infer_requires_commit(action, mode, had_commit)
-        template, allowed_params = parameterize(body)
-        key = f"{action}/{domain}/{sub_domain}"
-        record = {
-            "action": action,
-            "domain": domain,
-            "sub_domain": sub_domain,
-            "template": template,
-            "mode": mode,
-            "requires_commit": requires_commit,
-            "default_params": {},
-            "allowed_params": allowed_params,
-            "description": f"Template inferred from {row.get('_source_file', 'processed data')}",
-            "intent_examples": [],
-            "negative_rules": [
-                "never_append_commit_for_operational_mode",
-                "commit_required_only_when_requires_commit_true",
-            ],
-            "validation_rules": {
+        variant_bodies = [(body, command_variant(body))]
+        if command_variant(body) == "display_set":
+            variant_bodies.append((plain_body_for_variant(body), "plain"))
+
+        for variant_body, variant in variant_bodies:
+            frame = command_to_semantic_frame(variant_body)
+            action = str(frame.get("action", "")).lower()
+            domain = str(frame.get("domain", "")).lower()
+            sub_domain = str(frame.get("sub_domain", "")).lower()
+            if not valid_key_fields(action, domain, sub_domain, variant_body):
+                continue
+            mode = infer_mode(action)
+            requires_commit = infer_requires_commit(action, mode, had_commit)
+            template, allowed_params = parameterize(variant_body)
+            key = f"{action}/{domain}/{sub_domain}/{variant}"
+            public_key = f"{action}/{domain}/{sub_domain}"
+            record = {
                 "action": action,
+                "domain": domain,
+                "sub_domain": sub_domain,
+                "template": template,
                 "mode": mode,
-            },
-        }
-        examples[key].append(str(row.get("intent", "")))
-        if key in records and (
-            records[key]["template"] != template
-            or records[key]["requires_commit"] != requires_commit
-            or records[key]["mode"] != mode
-        ):
-            conflicts.append(
-                {
-                    "key": key,
-                    "existing": records[key],
-                    "candidate": record,
-                    "source_file": row.get("_source_file"),
-                    "target_command": target,
-                }
-            )
-            continue
-        records[key] = record
+                "requires_commit": requires_commit,
+                "default_params": {},
+                "allowed_params": sorted(set(allowed_params) | set(frame.get("parameters", {}).keys())),
+                "description": f"Template inferred from {row.get('_source_file', 'processed data')}",
+                "intent_examples": [],
+                "negative_rules": [
+                    "never_append_commit_for_operational_mode",
+                    "commit_required_only_when_requires_commit_true",
+                ],
+                "validation_rules": {
+                    "action": action,
+                    "mode": mode,
+                },
+                "variant": variant,
+            }
+            examples[key].append(str(row.get("intent", "")))
+            if key in records and (
+                records[key]["template"] != template
+                or records[key]["requires_commit"] != requires_commit
+                or records[key]["mode"] != mode
+            ):
+                conflicts.append(
+                    {
+                        "key": public_key,
+                        "variant": variant,
+                        "existing": records[key],
+                        "candidate": record,
+                        "source_file": row.get("_source_file"),
+                        "target_command": target,
+                    }
+                )
+                continue
+            records[key] = record
 
     for key, intents in examples.items():
         if key in records:

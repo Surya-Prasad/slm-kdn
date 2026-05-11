@@ -54,9 +54,16 @@ def retrieve_command_context(parsed_json: dict) -> Dict[str, object]:
         action = str(parsed_json.get("action", "")).strip().lower()
         domain = str(parsed_json.get("domain", "")).strip().lower()
         sub_domain = str(parsed_json.get("sub_domain", "")).strip().lower()
+        intent_context = str(parsed_json.get("_intent_context", "")).lower()
+        desired_variant = "display_set" if ("display set" in intent_context or "set format" in intent_context) else "plain"
 
-        record = retrieve_template(action, domain, sub_domain)
-        if record:
+        exact_candidates = [
+            item for item in all_templates()
+            if item.action == action and item.domain == domain and item.sub_domain == sub_domain
+        ]
+        if exact_candidates:
+            variant_matches = [item for item in exact_candidates if item.variant == desired_variant]
+            record = variant_matches[0] if variant_matches else exact_candidates[0]
             return _record_context(record)
 
         candidates = [

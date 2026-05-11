@@ -25,6 +25,25 @@ DOMAIN_SYNONYMS = {
     "ethernet_switching": "ethernet-switching",
     "chassis lcd": "chassis",
 }
+KNOWN_DOMAINS = {
+    "protocols",
+    "interfaces",
+    "system",
+    "snmp",
+    "chassis",
+    "virtual-chassis",
+    "ethernet-switching-options",
+    "ethernet-switching",
+    "vlans",
+    "poe",
+    "configuration",
+    "lldp",
+    "ospf",
+    "dhcp",
+    "cli",
+    "factory-default",
+}
+KNOWN_MULTI_TOKEN_DOMAINS = {"ethernet switching"}
 
 
 def semantic_prompt(intent: str, context: str = "") -> str:
@@ -81,7 +100,7 @@ def _infer_domain_subdomain_from_tokens(tokens: list[str]) -> tuple[str, str]:
     action = tokens[0] if tokens else ""
     if action == "show":
         if tokens[:4] == ["show", "configuration", "protocols", "sflow"]:
-            return "configuration", "protocols/sflow"
+            return "configuration", "protocols"
         return (tokens[1], tokens[2] if len(tokens) > 2 else "general") if len(tokens) > 1 else ("unknown", "general")
     if action in {"set", "delete"}:
         if tokens[:3] == ["set", "ethernet-switching-options", "secure-access-port"]:
@@ -123,6 +142,9 @@ def _extract_command_parameters(command: str) -> Dict[str, Any]:
     flag = re.search(r"\bflag\s+([A-Za-z0-9_-]+)\b", text, flags=re.I)
     if flag:
         params["flag"] = flag.group(1)
+    show_config_protocol = re.search(r"\bshow\s+configuration\s+protocols\s+([A-Za-z0-9_-]+)\b", text, flags=re.I)
+    if show_config_protocol:
+        params["protocol"] = show_config_protocol.group(1)
     username = re.search(r"\buser\s+([A-Za-z0-9_*.-]+)\b", text, flags=re.I)
     if username:
         params["username"] = username.group(1)
@@ -135,6 +157,26 @@ def _extract_command_parameters(command: str) -> Dict[str, Any]:
 def _looks_like_full_command(value: str) -> bool:
     tokens = str(value or "").strip().lower().split()
     return bool(tokens and tokens[0] in COMMAND_ACTION_TOKENS and len(tokens) > 1)
+
+
+def _untrusted_model_field(value: str, raw_action: str, action: str, is_domain: bool) -> bool:
+    text = str(value or "").strip().lower()
+    raw = str(raw_action or "").strip().lower()
+    if not text:
+        return True
+    if text == action or text == raw:
+        return True
+    if text.startswith(action + " "):
+        return True
+    if raw and (raw in text or text in raw and len(text.split()) > 1):
+        return True
+    if is_domain and " " in text and text not in KNOWN_MULTI_TOKEN_DOMAINS:
+        return True
+    if is_domain and text not in KNOWN_DOMAINS and len(text.split()) > 1:
+        return True
+    if not is_domain and len(text.split()) > 4:
+        return True
+    return False
 
 
 def _repair_full_command_action(parsed: Dict[str, Any], warnings: list[str]) -> Dict[str, Any]:
@@ -151,16 +193,14 @@ def _repair_full_command_action(parsed: Dict[str, Any], warnings: list[str]) -> 
     warnings.append("repaired_full_command_action")
     inferred_domain, inferred_sub_domain = _infer_domain_subdomain_from_tokens(tokens)
     if (
-        not str(repaired.get("domain", "")).strip()
-        or _looks_like_full_command(str(repaired.get("domain", "")))
-        or str(repaired.get("domain", "")).strip().lower() == raw_action.lower()
+        _untrusted_model_field(str(repaired.get("domain", "")), raw_action, current_action, is_domain=True)
+        or str(repaired.get("domain", "")).strip().lower() != inferred_domain
     ):
         repaired["domain"] = inferred_domain
         warnings.append("inferred_domain_sub_domain")
     if (
-        not str(repaired.get("sub_domain", "")).strip()
-        or _looks_like_full_command(str(repaired.get("sub_domain", "")))
-        or str(repaired.get("sub_domain", "")).strip().lower() == raw_action.lower()
+        _untrusted_model_field(str(repaired.get("sub_domain", "")), raw_action, current_action, is_domain=False)
+        or str(repaired.get("sub_domain", "")).strip().lower() != inferred_sub_domain
     ):
         repaired["sub_domain"] = inferred_sub_domain
         if "inferred_domain_sub_domain" not in warnings:
@@ -172,6 +212,26 @@ def _repair_full_command_action(parsed: Dict[str, Any], warnings: list[str]) -> 
     merged_params.update(params)
     repaired["parameters"] = merged_params
     return repaired
+
+
+def command_to_semantic_frame(command: str) -> Dict[str, Any]:
+    body = str(command or "").replace("\\n", "\n").strip()
+    body = re.sub(r"\n\s*commit\s*$", "", body, flags=re.I).strip()
+    body = re.sub(r"\s+", " ", body)
+    tokens = body.lower().split()
+    if not tokens:
+        return {"action": "", "domain": "", "sub_domain": "", "parameters": {}}
+    action = ACTION_SYNONYMS.get(tokens[0], tokens[0])
+    domain, sub_domain = _infer_domain_subdomain_from_tokens(tokens)
+    return normalize_semantic_frame(
+        {
+            "action": action,
+            "domain": domain,
+            "sub_domain": sub_domain,
+            "parameters": _extract_command_parameters(body),
+        },
+        [],
+    )
 
 
 def normalize_semantic_frame(parsed: Dict[str, Any], warnings: Optional[list[str]] = None) -> Dict[str, Any]:
