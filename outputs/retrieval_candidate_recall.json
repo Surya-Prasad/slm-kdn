@@ -1,0 +1,87 @@
+[
+  {
+    "query": "how to disable the OSPF protocol",
+    "expected_command": "set protocols ospf disable commit",
+    "normalized_query": "how to protocols ospf disable",
+    "found_in_dense_top50": false,
+    "found_in_lexical_top50": false,
+    "found_in_merged_pool": false,
+    "found_in_final_top5": false,
+    "final_top5_previews": [
+      "The LCD panel on the front panel of EX Series switches displays a variety of information about the switch in the Status menu and provides the Maintenance menu to enable you to perform basic operations such as initial setup and reboot. You c",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention \u2022 In the Logical Interfaces box, select All Interfaces. \u2022 To cancel the configuration, click Cancel. Represents graphical user interface (GUI) items you click or",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention Configure the machine\u2019s domain name: [edit] root@# set system domain-name domain-name Represents variables (options for which you substitute a value) in commands",
+      "Before you disconnect a fiber-optic cable from an optical transceiver, ensure that you have taken the necessary precautions for safe handling of lasers. See \u201cLaser and LED Safety Guidelines and Warnings\u201d on page 223. Ensure that you have th",
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm"
+    ],
+    "diagnosis": "corpus_missing"
+  },
+  {
+    "query": "Clear all MAC address entries in the ethernet switching table",
+    "expected_command": "clear ethernet-switching-table",
+    "normalized_query": "Clear all ethernet-switching-table",
+    "found_in_dense_top50": false,
+    "found_in_lexical_top50": false,
+    "found_in_merged_pool": false,
+    "found_in_final_top5": false,
+    "final_top5_previews": [
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm",
+      "ge-0/0/21 { unit 0 { family ethernet-switching; } } ge-0/0/22 { unit 0 { family ethernet-switching; } } ge-0/0/23 { unit 0 { family ethernet-switching; } } ge-0/1/0 { unit 0 { family ethernet-switching; } } xe-0/1/0 { unit 0 { family ethern",
+      "unit 0 { family ethernet-switching; } } ge-0/0/13 { unit 0 { family ethernet-switching; } } ge-0/0/14 { unit 0 { family ethernet-switching; } } ge-0/0/15 { unit 0 { family ethernet-switching; } } ge-0/0/16 { unit 0 { family ethernet-switchi",
+      "family ethernet-switching; } } ge-0/0/4 { unit 0 { family ethernet-switching; } } ge-0/0/5 { unit 0 { family ethernet-switching; } } ge-0/0/6 { unit 0 { family ethernet-switching; } } ge-0/0/7 { unit 0 { family ethernet-switching; } } ge-0/",
+      "NOTE: All models have four uplink ports as listed below (ge-0/1/0 to ge-0/1/3 and xe-0/1/0 to xe-0/1/3). Uplink ports labeled 2 and 3 are configured as Virtual Chassis ports by default. You can configure these ports as network ports. system"
+    ],
+    "diagnosis": "corpus_missing"
+  },
+  {
+    "query": "Display IGMP snooping detailed flows information",
+    "expected_command": "show igmp-snooping flows detail",
+    "normalized_query": "show igmp-snooping detail flows information",
+    "found_in_dense_top50": false,
+    "found_in_lexical_top50": false,
+    "found_in_merged_pool": false,
+    "found_in_final_top5": false,
+    "final_top5_previews": [
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm",
+      "Table 55: Filtering System Log Messages (continued) Your ActionFunctionField To generate a raw report: 1. Click Generate Raw Report. The Opening filteredEvents.html window appears. 2. Select Open with to open the HTML file or select Save Fi",
+      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
+      "Table 37: System Information (continued) DescriptionField Inventory details 136",
+      "Table 26: RJ-45 Management Port Connector Pinout Information DescriptionSignalPin Transmit/receive data pair 1TRP1+1 Transmit/receive data pair 1TRP1\u20142 Transmit/receive data pair 2TRP2+3 Transmit/receive data pair 3TRP3+4 Transmit/receive d"
+    ],
+    "diagnosis": "corpus_missing"
+  },
+  {
+    "query": "Notify all logged users when any emergency level event occurs",
+    "expected_command": "set system syslog user * any emergency commit",
+    "normalized_query": "Notify user * when any emergency occurs",
+    "found_in_dense_top50": false,
+    "found_in_lexical_top50": false,
+    "found_in_merged_pool": false,
+    "found_in_final_top5": false,
+    "final_top5_previews": [
+      "NOTE: All models have four uplink ports as listed below (ge-0/1/0 to ge-0/1/3 and xe-0/1/0 to xe-0/1/3). Uplink ports labeled 2 and 3 are configured as Virtual Chassis ports by default. You can configure these ports as network ports. system",
+      "Warning Statement for Norway and Sweden WARNING: The equipment must be connected to an earthed mains socket-outlet. Advarsel Apparatet skal kobles til en jordet stikkontakt. Varning! Apparaten skall anslutas till jordat n\u00e4tuttag. Fire Safet",
+      "\u2022 Canada\u2014Canadian Electrical Code, Part 1, CSA C22.1. \u2022 Suitable for installationin InformationTechnologyRooms in accordancewith Article 645 of the National Electrical Code and NFPA 75. Peut \u00eatre install\u00e9 dans des salles de mat\u00e9riel de trai",
+      "Taiwan \u6b64\u70ba\u7532\u985e\u8cc7\u8a0a\u6280\u8853\u8a2d\u5099\u3002\u65bc\u4e00\u822c\u5bb6\u5c45\u74b0\u5883\u4f7f\u7528\u6642\uff0c\u672c\u8a2d\u5099\u53ef\u80fd\u5c0e\u81f4\u5c04\u983b\u5e72\u64fe\uff0c\u7528\u6236\u8acb\u63a1\u53d6\u76f8\u61c9\u63aa\u65bd\u3002 The preceding translates as follows: This is a Class A device. In a domestic environment, this device might cause radio interference, in which case the user needs to take adequate measures",
+      "NOTE: By default, the View Events page in the J-Web interface displays the most recent 25 events, with severity levels highlighted in different colors. After you specify the filters, Event Summary displays the events matching the specified "
+    ],
+    "diagnosis": "corpus_missing"
+  },
+  {
+    "query": "Display the PIC mode for all members of the Virtual Chassis configuration",
+    "expected_command": "show chassis pic-mode all-members",
+    "normalized_query": "show the PIC mode for all members of the Virtual Chassis configuration",
+    "found_in_dense_top50": false,
+    "found_in_lexical_top50": false,
+    "found_in_merged_pool": false,
+    "found_in_final_top5": false,
+    "final_top5_previews": [
+      "Understanding EX3300 Virtual Chassis Hardware Configuration Virtual Chassis is a feature in Juniper Networks EX3300 Ethernet Switches that allows you to interconnect two or more EX3300 switches, enabling them to operate as a unified, single",
+      "Table 31: RJ-45 to DB-9 Serial Port Adapter Pinout Information (continued) SignalDB-9 PinSignalRJ-45 Pin DTR4DSR7 RTS7CTS8 EX3300 Virtual Chassis IN THIS SECTION Planning EX3300 Virtual Chassis | 77 Understanding EX3300 Virtual Chassis Hard",
+      "Table 7: Chassis Status LEDs in an EX3300 Switch State and DescriptionColorLED Label There is no alarm or the switch is halted.UnlitALM (Alarm) There is a major alarm. NOTE: When you connect power to the switch, the Alarm (ALM) LED lights r",
+      "Table 44: Chassis Viewer for EX4500 Switches (continued) DescriptionField The console port is used to connect the switch to a management console or to a console server. Console port The management port is used to connect the switch to a man",
+      "toggle between the LCD panel menus by pressing the Menu button and navigate through the menu options by pressing the Enter button. LCD Panel Modes The LCD panel operates in four modes: boot, idle, status, and maintenance. The LCD panel oper"
+    ],
+    "diagnosis": "corpus_missing"
+  }
+]

@@ -19,37 +19,37 @@
       "ex3300.pdf"
     ],
     "top5_previews": [
-      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
       "The LCD panel on the front panel of EX Series switches displays a variety of information about the switch in the Status menu and provides the Maintenance menu to enable you to perform basic operations such as initial setup and reboot. You c",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention \u2022 In the Logical Interfaces box, select All Interfaces. \u2022 To cancel the configuration, click Cancel. Represents graphical user interface (GUI) items you click or",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention Configure the machine\u2019s domain name: [edit] root@# set system domain-name domain-name Represents variables (options for which you substitute a value) in commands",
       "Before you disconnect a fiber-optic cable from an optical transceiver, ensure that you have taken the necessary precautions for safe handling of lasers. See \u201cLaser and LED Safety Guidelines and Warnings\u201d on page 223. Ensure that you have th",
-      "Table 6: LCD Panel Menu Options (continued) DescriptionMenu If you do not want users to use Maintenance menu options, disable the entire menu or individual menu options. See \u201cConfiguring the LCD Panel on EX Series Switches (CLI Procedure)\u201d ",
-      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe"
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm"
     ],
     "top5_scores": [
       {
-        "score": 0.4134943418286851,
-        "dense": 0.12805739026375673,
-        "lexical": 0.07664520105618738
+        "score": 0.45499999999999996,
+        "dense": 0.0895363108504328,
+        "lexical": 0.07411573607556425
       },
       {
-        "score": 0.3896955090294631,
-        "dense": 0.09946688535370538,
-        "lexical": 0.10293741825766663
+        "score": 0.42077952673882313,
+        "dense": 0.0880154413252868,
+        "lexical": 0.060773968820601425
       },
       {
-        "score": 0.2003276986919479,
-        "dense": 0.03988410491920162,
-        "lexical": 0.0691911327931309
+        "score": 0.38696654871161223,
+        "dense": 0.079335828365868,
+        "lexical": 0.05828452434784775
       },
       {
-        "score": 0.1387141629714909,
-        "dense": 0.0323188177511336,
-        "lexical": 0.04110763852729416
+        "score": 0.2413671567256279,
+        "dense": 0.035902155811334865,
+        "lexical": 0.056592896727151176
       },
       {
-        "score": 0.13795305926941406,
-        "dense": 0.027452915030098102,
-        "lexical": 0.04766602599861507
+        "score": 0.19660642259727823,
+        "dense": 0.04146133343755466,
+        "lexical": 0.027894541108198594
       }
     ]
   },
@@ -72,37 +72,37 @@
       "ex3300.pdf"
     ],
     "top5_previews": [
-      "Table 38: Health Status (continued) DescriptionField Indicates the status of the fans in the fan tray. The possible values are OK, Failed, and Absent.Fan Status Capacity Utilization Panel Table 39: Capacity Utilization DescriptionField Indi",
+      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm",
       "ge-0/0/21 { unit 0 { family ethernet-switching; } } ge-0/0/22 { unit 0 { family ethernet-switching; } } ge-0/0/23 { unit 0 { family ethernet-switching; } } ge-0/1/0 { unit 0 { family ethernet-switching; } } xe-0/1/0 { unit 0 { family ethern",
       "unit 0 { family ethernet-switching; } } ge-0/0/13 { unit 0 { family ethernet-switching; } } ge-0/0/14 { unit 0 { family ethernet-switching; } } ge-0/0/15 { unit 0 { family ethernet-switching; } } ge-0/0/16 { unit 0 { family ethernet-switchi",
       "family ethernet-switching; } } ge-0/0/4 { unit 0 { family ethernet-switching; } } ge-0/0/5 { unit 0 { family ethernet-switching; } } ge-0/0/6 { unit 0 { family ethernet-switching; } } ge-0/0/7 { unit 0 { family ethernet-switching; } } ge-0/",
-      "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm"
+      "NOTE: All models have four uplink ports as listed below (ge-0/1/0 to ge-0/1/3 and xe-0/1/0 to xe-0/1/3). Uplink ports labeled 2 and 3 are configured as Virtual Chassis ports by default. You can configure these ports as network ports. system"
     ],
     "top5_scores": [
       {
-        "score": 0.348160454452573,
-        "dense": 0.20397990788861123,
-        "lexical": 0.12685235720389443
+        "score": 0.35270357442688366,
+        "dense": 0.292364713712402,
+        "lexical": 0.07470023844012563
       },
       {
         "score": 0.29250000000000004,
-        "dense": 0.3213615049760638,
+        "dense": 0.4496060550836344,
         "lexical": 0.0
       },
       {
         "score": 0.2826128903709523,
-        "dense": 0.3104988163256224,
+        "dense": 0.4344084333520256,
         "lexical": 0.0
       },
       {
-        "score": 0.2772486431358748,
-        "dense": 0.3046052690964661,
+        "score": 0.2772486431358747,
+        "dense": 0.42616296997473835,
         "lexical": 0.0
       },
       {
-        "score": 0.23541545524235807,
-        "dense": 0.20897130574239345,
-        "lexical": 0.035293745569627485
+        "score": 0.18553073501804948,
+        "dense": 0.2366903511399775,
+        "lexical": 0.01450205352334083
       }
     ]
   },
@@ -125,37 +125,37 @@
       "ex3300.pdf"
     ],
     "top5_previews": [
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention \u2022 In the Logical Interfaces box, select All Interfaces. \u2022 To cancel the configuration, click Cancel. Represents graphical user interface (GUI) items you click or",
       "Table 50: Chassis Viewer for EX8216 Switches (continued) DescriptionField In the image, click any line card or RE module to display the front view of the selected component. In the image, the colors listed below denote the interface status:",
-      "Table 48: Chassis Viewer for EX6210 Switches (continued) DescriptionField Mouse over the power supply icons to display name, status, and description information.Power supplies LCD panel configured for the LEDs on the ports. Mouse over the i",
-      "Table 49: Chassis Viewer for EX8208 Switches (continued) DescriptionField Slots on the switch are labeled, from the top of the switch down: \u2022 0\u20133 (line cards) \u2022 SRE0, SF, SRE1 (SRE and SF modules) \u2022 4\u20137 (line cards) Slot numbers The active ",
-      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe",
-      "Table 42: Chassis Viewer for EX3200, EX3300, and EX4200 Switches (continued) DescriptionField In the image, the following colors denote the interface status: \u2022 Green\u2014Interface is up and operational. \u2022 Yellow\u2014Interface is up but is nonoperat"
+      "Table 37: System Information (continued) DescriptionField Inventory details 136",
+      "Table 25: Console Port Connector Pinout Information (continued) DescriptionSignalPin CTS InputNC8 USB Port Specifications for an EX Series Switch The following Juniper Networks USB flash drives have been tested and are officially supported ",
+      "Table 2: Text and Syntax Conventions (continued) ExamplesDescriptionConvention Configure the machine\u2019s domain name: [edit] root@# set system domain-name domain-name Represents variables (options for which you substitute a value) in commands"
     ],
     "top5_scores": [
       {
-        "score": 0.45499999999999996,
-        "dense": 0.13367683093088217,
-        "lexical": 0.09325614308773802
+        "score": 0.41604879433111003,
+        "dense": 0.07382635851357632,
+        "lexical": 0.03600069169581624
       },
       {
-        "score": 0.31543889456363944,
-        "dense": 0.0991747637482401,
-        "lexical": 0.05648929938828239
+        "score": 0.34138723186020653,
+        "dense": 0.04825602498706889,
+        "lexical": 0.04376563667799392
       },
       {
-        "score": 0.2918165771077577,
-        "dense": 0.09211297712741366,
-        "lexical": 0.05180047752418601
+        "score": 0.3193189059128975,
+        "dense": 0.05563355586180294,
+        "lexical": 0.028817962814905212
       },
       {
-        "score": 0.2252055947551802,
-        "dense": 0.0673906997467085,
-        "lexical": 0.044617833163647806
+        "score": 0.2914687265985099,
+        "dense": 0.03526436003731072,
+        "lexical": 0.044218589988948565
       },
       {
-        "score": 0.21303486687869116,
-        "dense": 0.06735015337857927,
-        "lexical": 0.03768416268758145
+        "score": 0.2856253729927796,
+        "dense": 0.04856258598645993,
+        "lexical": 0.027163356224153563
       }
     ]
   },
@@ -187,27 +187,27 @@
       {
         "score": 0.45412126966508193,
         "dense": 0.09316638700743701,
-        "lexical": 0.09941650767993175
+        "lexical": 0.09547858664311475
       },
       {
-        "score": 0.449167210438656,
+        "score": 0.44377319316197883,
         "dense": 0.0934471214358694,
-        "lexical": 0.09584804264472692
+        "lexical": 0.08888215803136384
       },
       {
-        "score": 0.30413475765952735,
+        "score": 0.3065377392032234,
         "dense": 0.0701453764575304,
-        "lexical": 0.05174053536844999
+        "lexical": 0.05110297261773867
       },
       {
-        "score": 0.19044069135783148,
+        "score": 0.19398508763725766,
         "dense": 0.050441661908146036,
-        "lexical": 0.01991549196569693
+        "lexical": 0.021209180052443852
       },
       {
-        "score": 0.17771276624245197,
+        "score": 0.18559890324352993,
         "dense": 0.03363601941101573,
-        "lexical": 0.044311156457590005
+        "lexical": 0.04718955962824234
       }
     ]
   },
@@ -227,37 +227,37 @@
       "ex3300.pdf"
     ],
     "top5_previews": [
-      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
       "} ge-0/1/3 { unit 0 { family ethernet-switching; } } xe-0/1/3 { unit 0 { family ethernet-switching; } } } protocols { igmp-snooping { vlan all; } rstp; lldp { interface all; } lldp-med { interface all; } } ethernet-switching-options { storm",
-      "Table 50: Chassis Viewer for EX8216 Switches (continued) DescriptionField In the image, click any line card or RE module to display the front view of the selected component. In the image, the colors listed below denote the interface status:",
-      "Table 49: Chassis Viewer for EX8208 Switches (continued) DescriptionField Slots on the switch are labeled, from the top of the switch down: \u2022 0\u20133 (line cards) \u2022 SRE0, SF, SRE1 (SRE and SF modules) \u2022 4\u20137 (line cards) Slot numbers The active ",
-      "To enable a menu option: [edit] user@switch# delete chassis lcd-menu menu-item menu-option disable Configuring a Custom Display Message You can configure the second line of the LCD to display a custom message temporarily for 5 minutes or pe"
+      "Table 55: Filtering System Log Messages (continued) Your ActionFunctionField To generate a raw report: 1. Click Generate Raw Report. The Opening filteredEvents.html window appears. 2. Select Open with to open the HTML file or select Save Fi",
+      "Configuring Junos OS on the EX3300 IN THIS SECTION EX3300 Switch Default Configuration | 116 Connecting and Configuring an EX Series Switch (CLI Procedure) | 121 Connecting and Configuring an EX Series Switch (J-Web Procedure) | 125 Configu",
+      "Table 37: System Information (continued) DescriptionField Inventory details 136",
+      "Table 26: RJ-45 Management Port Connector Pinout Information DescriptionSignalPin Transmit/receive data pair 1TRP1+1 Transmit/receive data pair 1TRP1\u20142 Transmit/receive data pair 2TRP2+3 Transmit/receive data pair 3TRP3+4 Transmit/receive d"
     ],
     "top5_scores": [
       {
-        "score": 0.3078705753882464,
-        "dense": 0.06746103859981897,
-        "lexical": 0.05705261498480313
+        "score": 0.39089620302440276,
+        "dense": 0.15920186899708477,
+        "lexical": 0.047023444529699775
       },
       {
-        "score": 0.29250000000000004,
-        "dense": 0.13573829323951664,
+        "score": 0.1625,
+        "dense": 0.0,
+        "lexical": 0.07765858337217678
+      },
+      {
+        "score": 0.1453705753882464,
+        "dense": 0.07912228136406987,
         "lexical": 0.0
       },
       {
-        "score": 0.2883752338068507,
-        "dense": 0.0735190564952656,
-        "lexical": 0.04562465843425982
+        "score": 0.11912222579735549,
+        "dense": 0.03393589807588892,
+        "lexical": 0.027131347503352072
       },
       {
-        "score": 0.27413112071508233,
-        "dense": 0.06934018249811066,
-        "lexical": 0.04378523547278932
-      },
-      {
-        "score": 0.21673575609511125,
-        "dense": 0.05072991412109569,
-        "lexical": 0.03771398305051912
+        "score": 0.09966457022928318,
+        "dense": 0.02598462436179681,
+        "lexical": 0.02481408229080405
       }
     ]
   },
@@ -281,37 +281,37 @@
       "ex3300.pdf"
     ],
     "top5_previews": [
-      "NOTE: By default, the View Events page in the J-Web interface displays the most recent 25 events, with severity levels highlighted in different colors. After you specify the filters, Event Summary displays the events matching the specified ",
+      "NOTE: All models have four uplink ports as listed below (ge-0/1/0 to ge-0/1/3 and xe-0/1/0 to xe-0/1/3). Uplink ports labeled 2 and 3 are configured as Virtual Chassis ports by default. You can configure these ports as network ports. system",
       "Warning Statement for Norway and Sweden WARNING: The equipment must be connected to an earthed mains socket-outlet. Advarsel Apparatet skal kobles til en jordet stikkontakt. Varning! Apparaten skall anslutas till jordat n\u00e4tuttag. Fire Safet",
-      "Table 56: Viewing System Log Messages (continued) Additional InformationFunctionField The event ID begins with a prefix that indicates the generating software process. Some processes on a switch do not use codes. This field might be blank i",
-      "United States | 258 FCC Part 15 Statement | 258 Nonregulatory Environmental Standards | 259 This topic applies to hardware devices in the EX Series product family, which includes EX Series switches, the EX Series Redundant Power System (RPS",
-      "Table 55: Filtering System Log Messages (continued) Your ActionFunctionField To generate a raw report: 1. Click Generate Raw Report. The Opening filteredEvents.html window appears. 2. Select Open with to open the HTML file or select Save Fi"
+      "\u2022 Canada\u2014Canadian Electrical Code, Part 1, CSA C22.1. \u2022 Suitable for installationin InformationTechnologyRooms in accordancewith Article 645 of the National Electrical Code and NFPA 75. Peut \u00eatre install\u00e9 dans des salles de mat\u00e9riel de trai",
+      "Taiwan \u6b64\u70ba\u7532\u985e\u8cc7\u8a0a\u6280\u8853\u8a2d\u5099\u3002\u65bc\u4e00\u822c\u5bb6\u5c45\u74b0\u5883\u4f7f\u7528\u6642\uff0c\u672c\u8a2d\u5099\u53ef\u80fd\u5c0e\u81f4\u5c04\u983b\u5e72\u64fe\uff0c\u7528\u6236\u8acb\u63a1\u53d6\u76f8\u61c9\u63aa\u65bd\u3002 The preceding translates as follows: This is a Class A device. In a domestic environment, this device might cause radio interference, in which case the user needs to take adequate measures",
+      "NOTE: By default, the View Events page in the J-Web interface displays the most recent 25 events, with severity levels highlighted in different colors. After you specify the filters, Event Summary displays the events matching the specified "
     ],
     "top5_scores": [
       {
-        "score": 0.4523394071765742,
-        "dense": 0.1378028135882941,
-        "lexical": 0.09034137301303534
+        "score": 0.45499999999999996,
+        "dense": 0.10037703701114134,
+        "lexical": 0.11573970268975815
       },
       {
-        "score": 0.42055033046795764,
-        "dense": 0.1390677802139591,
-        "lexical": 0.07118918565691203
+        "score": 0.2658100645032279,
+        "dense": 0.07160213310237305,
+        "lexical": 0.040712249686123615
       },
       {
-        "score": 0.3802537321750196,
-        "dense": 0.11787862505888577,
-        "lexical": 0.07356327879599636
+        "score": 0.19053892961854163,
+        "dense": 0.04966900541278756,
+        "lexical": 0.032622782605502124
       },
       {
-        "score": 0.23365655476566735,
-        "dense": 0.07099349592113195,
-        "lexical": 0.04688666062423658
+        "score": 0.17570572927408865,
+        "dense": 0.04664420829219804,
+        "lexical": 0.028335853864819367
       },
       {
-        "score": 0.23101270733210924,
-        "dense": 0.07017831872131995,
-        "lexical": 0.046370023258748096
+        "score": 0.1751154614195637,
+        "dense": 0.04369511177977342,
+        "lexical": 0.034036257149524636
       }
     ]
   },

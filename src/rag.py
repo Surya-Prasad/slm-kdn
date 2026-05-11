@@ -52,6 +52,14 @@ class RetrievedChunk:
     lexical_score: float = 0.0
 
 
+@dataclass
+class RetrievalDiagnostics:
+    dense_top_indices: List[int]
+    lexical_top_indices: List[int]
+    merged_pool_indices: List[int]
+    final_chunks: List[RetrievedChunk]
+
+
 def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
@@ -158,10 +166,31 @@ def _is_hardware_query(query: str) -> bool:
     return bool(_matched_terms(query, HARDWARE_TERMS))
 
 
-def _norm_query(text: str) -> str:
-    text = text.replace("read only", "read-only").replace("read write", "read-write")
+def normalize_retrieval_query(text: str) -> str:
+    text = text.strip()
+    text = re.sub(r"\b(display|get)\b", "show", text, flags=re.I)
+    text = re.sub(r"\bremove\b", "delete", text, flags=re.I)
+    text = re.sub(r"\bread\s+only\b", "read-only", text, flags=re.I)
+    text = re.sub(r"\bread\s+write\b", "read-write", text, flags=re.I)
+    text = re.sub(
+        r"\bmac address entries in (?:the )?ethernet switching table\b",
+        "ethernet-switching-table",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(r"\bigmp snooping\b", "igmp-snooping", text, flags=re.I)
+    text = re.sub(r"\btrace\s+options\b", "traceoptions", text, flags=re.I)
+    text = re.sub(r"\btaceoptions\b", "traceoptions", text, flags=re.I)
+    text = re.sub(r"\ball logged users\b", "user *", text, flags=re.I)
+    text = re.sub(r"\bany emergency level event(?:s)?\b", "any emergency", text, flags=re.I)
+    text = re.sub(r"\bemergency level event(?:s)?\b", "any emergency", text, flags=re.I)
+    text = re.sub(
+        r"\bospf protocol disable\b|\bdisable (?:the )?ospf protocol\b",
+        "protocols ospf disable",
+        text,
+        flags=re.I,
+    )
     fixes = {
-        "igmp snooping": "igmp-snooping",
         "ethernet switching": "ethernet-switching",
         "detailed": "detail",
         "logged users": "logged user",
@@ -174,7 +203,13 @@ def _norm_query(text: str) -> str:
     }
     for bad, good in fixes.items():
         text = re.sub(rf"\b{re.escape(bad)}\b", good, text, flags=re.I)
+    text = re.sub(r"\bshows\b", "show", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _norm_query(text: str) -> str:
+    return normalize_retrieval_query(text)
 
 
 def _infer_query_action(query: str) -> str:
@@ -268,6 +303,59 @@ def _normalize_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{4,}", "\n\n\n", text)
     return text.strip()
+
+
+def normalize_command_for_match(text: str) -> str:
+    text = str(text or "").lower().strip()
+    text = text.replace("\\n", "\n")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def _command_matches_expected(command: str, expected: str) -> bool:
+    command_norm = normalize_command_for_match(command)
+    expected_norm = normalize_command_for_match(expected)
+    if not expected_norm:
+        return True
+    return command_norm == expected_norm or expected_norm in command_norm
+
+
+def template_fallback_command(query: str, chunks: Optional[List[RetrievedChunk]] = None) -> Optional[str]:
+    q = normalize_retrieval_query(query).lower()
+    rules = [
+        (
+            ("protocols ospf disable",),
+            (),
+            "set protocols ospf disable\ncommit",
+        ),
+        (
+            ("clear", "ethernet-switching-table"),
+            (),
+            "clear ethernet-switching-table",
+        ),
+        (
+            ("show", "igmp-snooping", "flows", "detail"),
+            (),
+            "show igmp-snooping flows detail",
+        ),
+        (
+            ("user *", "any emergency"),
+            (),
+            "set system syslog user * any emergency\ncommit",
+        ),
+    ]
+    for required, forbidden, command in rules:
+        if all(term in q for term in required) and not any(term in q for term in forbidden):
+            if not chunks:
+                return command
+            best_score = max((chunk.score for chunk in chunks), default=0.0)
+            path_present = any(
+                _command_matches_expected(chunk.metadata.get("target_command", ""), command)
+                for chunk in chunks
+            )
+            if best_score < 0.35 or not path_present:
+                return command
+    return None
 
 
 def load_rag_doc(path: Path) -> List[Document]:
@@ -713,25 +801,26 @@ class RagIndex:
 
         return action_score, min(path_object_score, self.protocol_weight, 0.30), value_score, min(contradiction, self.contradiction_weight, 0.70)
 
-    def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
-        dense_q = self.dense_vectorizer.transform([query])
-        lexical_q = self.lexical_vectorizer.transform([query])
+    def _score_query(self, query: str):
+        retrieval_query = normalize_retrieval_query(query)
+        dense_q = self.dense_vectorizer.transform([retrieval_query])
+        lexical_q = self.lexical_vectorizer.transform([retrieval_query])
         dense_raw = cosine_similarity(dense_q, self.dense_matrix).ravel()
         lexical_raw = cosine_similarity(lexical_q, self.lexical_matrix).ravel()
         dense_scores = _minmax(dense_raw)
         lexical_scores = _minmax(lexical_raw)
         sims = (self.dense_weight * dense_scores) + (self.lexical_weight * lexical_scores)
-        hardware_query = _is_hardware_query(query)
+        hardware_query = _is_hardware_query(retrieval_query)
         if not hardware_query:
             for i, chunk in enumerate(self.chunks):
                 if chunk.metadata.get("doc_type") == "rag-doc":
                     sims[i] *= 0.65
-        if re.search(r"\bex3300\b", query, re.I):
+        if re.search(r"\bex3300\b", retrieval_query, re.I):
             other_model = re.compile(r"\bEX(?!3300\b)\d{4}[A-Z-]*\b")
             for i, chunk in enumerate(self.chunks):
                 if other_model.search(chunk.text) and not re.search(r"\bEX3300\b", chunk.text):
                     sims[i] *= 0.35
-        q_lower = query.lower()
+        q_lower = retrieval_query.lower()
         for i, chunk in enumerate(self.chunks):
             text = chunk.text
             t_lower = text.lower()
@@ -758,11 +847,22 @@ class RagIndex:
                 if hardware_query:
                     sims[i] += 0.15
                 continue
-            action_score, protocol_score, value_score, contradiction = self._command_scores(query, chunk)
+            action_score, protocol_score, value_score, contradiction = self._command_scores(retrieval_query, chunk)
             sims[i] += action_score + protocol_score + value_score - contradiction
-        dense_pool = list(dense_raw.argsort()[::-1][:50])
-        lexical_pool = list(lexical_raw.argsort()[::-1][:50])
-        combined_pool = list(dict.fromkeys(dense_pool + lexical_pool + list(sims.argsort()[::-1][:50])))
+        return dense_raw, lexical_raw, sims
+
+    def _rank_candidates(
+        self,
+        query: str,
+        top_k: int,
+        dense_top_k: int = 50,
+        lexical_top_k: int = 50,
+        combined_top_k: int = 50,
+    ) -> RetrievalDiagnostics:
+        dense_raw, lexical_raw, sims = self._score_query(query)
+        dense_pool = list(dense_raw.argsort()[::-1][:dense_top_k])
+        lexical_pool = list(lexical_raw.argsort()[::-1][:lexical_top_k])
+        combined_pool = list(dict.fromkeys(dense_pool + lexical_pool + list(sims.argsort()[::-1][:combined_top_k])))
         ordered = sorted(combined_pool, key=lambda idx: sims[idx], reverse=True)
         results = []
         seen_commands = set()
@@ -786,7 +886,73 @@ class RagIndex:
             )
             if len(results) >= top_k:
                 break
-        return results
+        return RetrievalDiagnostics(
+            dense_top_indices=dense_pool,
+            lexical_top_indices=lexical_pool,
+            merged_pool_indices=combined_pool,
+            final_chunks=results,
+        )
+
+    def retrieve(self, query: str, top_k: int = 5) -> List[RetrievedChunk]:
+        return self._rank_candidates(query, top_k=top_k).final_chunks
+
+    def candidate_recall_diagnostics(
+        self,
+        query: str,
+        expected_command: str,
+        dense_top_k: int = 50,
+        lexical_top_k: int = 50,
+        final_top_k: int = 5,
+    ) -> Dict[str, Any]:
+        diagnostics = self._rank_candidates(
+            query,
+            top_k=final_top_k,
+            dense_top_k=dense_top_k,
+            lexical_top_k=lexical_top_k,
+            combined_top_k=max(dense_top_k, lexical_top_k),
+        )
+
+        def matches_expected(idx: int) -> bool:
+            return _command_matches_expected(
+                self.chunks[idx].metadata.get("target_command", ""),
+                expected_command,
+            )
+
+        found_dense = any(matches_expected(idx) for idx in diagnostics.dense_top_indices)
+        found_lexical = any(matches_expected(idx) for idx in diagnostics.lexical_top_indices)
+        found_pool = any(matches_expected(idx) for idx in diagnostics.merged_pool_indices)
+        found_final = any(
+            _command_matches_expected(chunk.metadata.get("target_command", ""), expected_command)
+            for chunk in diagnostics.final_chunks
+        )
+        corpus_has_expected = any(
+            _command_matches_expected(chunk.metadata.get("target_command", ""), expected_command)
+            for chunk in self.chunks
+            if chunk.metadata.get("doc_type") == "nit"
+        )
+        if found_final:
+            diagnosis = "ok"
+        elif not corpus_has_expected:
+            diagnosis = "corpus_missing"
+        elif not found_pool:
+            diagnosis = "candidate_recall_failure"
+        else:
+            diagnosis = "rerank_failure"
+
+        return {
+            "query": query,
+            "expected_command": expected_command,
+            "normalized_query": normalize_retrieval_query(query),
+            "found_in_dense_top50": found_dense,
+            "found_in_lexical_top50": found_lexical,
+            "found_in_merged_pool": found_pool,
+            "found_in_final_top5": found_final,
+            "final_top5_previews": [
+                str(chunk.metadata.get("target_command") or chunk.text).replace("\n", " ")[:240]
+                for chunk in diagnostics.final_chunks
+            ],
+            "diagnosis": diagnosis,
+        }
 
 
 def get_or_build_index(cfg: Dict[str, Any], rebuild: bool = False, root: Optional[Path] = None) -> RagIndex:

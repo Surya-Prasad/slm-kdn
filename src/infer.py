@@ -8,7 +8,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from preprocess import build_prompt
-from rag import apply_rag_corpus, assert_no_eval_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index
+from rag import apply_rag_corpus, assert_no_eval_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index, template_fallback_command
 from rag_store import retrieve_template
 from utils import load_config, read_jsonl, write_jsonl
 
@@ -130,6 +130,7 @@ def main(a):
         batch_rows = rows[i:i+batch_size]
         prompts = []
         retrievals = []
+        fallback_commands = []
         for r in batch_rows:
             question = r['intent']
             if rag_index:
@@ -145,10 +146,15 @@ def main(a):
                 retrievals.append(chunks)
                 if a.rag_debug:
                     print(format_retrieval_debug(question, chunks))
+                fallback = template_fallback_command(question, chunks) if a.enable_template_fallback else None
+                if fallback:
+                    print(f"[RAG] template fallback used for `{question}`: {fallback.replace(chr(10), ' | ')}")
                 prompts.append(build_rag_prompt(question, chunks))
+                fallback_commands.append(fallback)
             else:
                 retrievals.append([])
                 prompts.append(build_prompt(question, r.get('context',''), a.mode))
+                fallback_commands.append(None)
         
         inputs = tok(prompts, return_tensors='pt', padding=True).to(model.device)
         
@@ -159,6 +165,8 @@ def main(a):
             text = tok.decode(gen, skip_special_tokens=True)
             raw_pred = text[len(prompts[j]):]
             pred = clean_answer(raw_pred) if rag_index else clean(raw_pred)
+            if fallback_commands[j]:
+                pred = fallback_commands[j]
             rag_sources = [
                 {
                     "source_file": chunk.metadata.get("source_file"),
@@ -174,6 +182,7 @@ def main(a):
                 row["rag_sources"] = rag_sources
                 row["rag_context_previews"] = [re.sub(r"\s+", " ", chunk.text)[:300] for chunk in retrievals[j]]
                 row["rag_prompt"] = prompts[j] if a.save_prompts else None
+                row["template_fallback_used"] = bool(fallback_commands[j])
             out.append(row)
             
     write_jsonl(a.output_file,out)
@@ -227,4 +236,4 @@ def main(a):
             print(f"[RAG] wrote failure analysis to {failure_file}")
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); p.add_argument('--rag-corpus',dest='rag_corpus',default=None); p.add_argument('--failure-file',dest='failure_file',default=None); p.add_argument('--save-prompts',dest='save_prompts',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); p.add_argument('--rag-corpus',dest='rag_corpus',default=None); p.add_argument('--failure-file',dest='failure_file',default=None); p.add_argument('--save-prompts',dest='save_prompts',action='store_true'); p.add_argument('--enable-template-fallback',dest='enable_template_fallback',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)

@@ -9,6 +9,7 @@ from rag import (
     extractive_answer,
     format_retrieval_debug,
     get_or_build_index,
+    template_fallback_command,
 )
 from utils import load_config
 
@@ -34,6 +35,14 @@ REGRESSION_CASES = [
     ("Display IGMP snooping detailed flows information", "show igmp-snooping flows detail", None),
     ("Notify all logged users when any emergency level event occurs", "set system syslog user * any emergency", ("show log user", "kernel any", "ntp any")),
     ("Show LCD active menu items", None, None),
+]
+
+CANDIDATE_RECALL_CASES = [
+    ("how to disable the OSPF protocol", "set protocols ospf disable commit"),
+    ("Clear all MAC address entries in the ethernet switching table", "clear ethernet-switching-table"),
+    ("Display IGMP snooping detailed flows information", "show igmp-snooping flows detail"),
+    ("Notify all logged users when any emergency level event occurs", "set system syslog user * any emergency commit"),
+    ("Display the PIC mode for all members of the Virtual Chassis configuration", "show chassis pic-mode all-members"),
 ]
 
 
@@ -76,10 +85,20 @@ def main(args):
     if args.regression:
         has_train = Path(cfg["data"]["output_dir"], "train.jsonl").exists()
         regression_results = []
+        candidate_recall_results = []
+        for query, expected_command in CANDIDATE_RECALL_CASES:
+            record = index.candidate_recall_diagnostics(query, expected_command)
+            candidate_recall_results.append(record)
+            if record["diagnosis"] == "candidate_recall_failure":
+                print(f"[RAG] candidate recall failure: {query} -> {expected_command}")
         for query, expected, bad_patterns in REGRESSION_CASES:
             chunks = index.retrieve(query, top_k=5)
             print("=" * 80)
             print(format_retrieval_debug(query, chunks))
+            if args.enable_template_fallback:
+                fallback = template_fallback_command(query, chunks)
+                if fallback:
+                    print(f"[RAG] template fallback used: {fallback.replace(chr(10), ' | ')}")
             assert_no_eval_leakage(chunks, strict=strict)
             passed = True
             error = None
@@ -116,9 +135,17 @@ def main(args):
             if not passed:
                 Path("outputs").mkdir(exist_ok=True)
                 Path("outputs/retrieval_regression.json").write_text(json.dumps(regression_results, indent=2), encoding="utf-8")
+                Path("outputs/retrieval_candidate_recall.json").write_text(
+                    json.dumps(candidate_recall_results, indent=2),
+                    encoding="utf-8",
+                )
                 raise RuntimeError(f"{error} for query: {query}")
         Path("outputs").mkdir(exist_ok=True)
         Path("outputs/retrieval_regression.json").write_text(json.dumps(regression_results, indent=2), encoding="utf-8")
+        Path("outputs/retrieval_candidate_recall.json").write_text(
+            json.dumps(candidate_recall_results, indent=2),
+            encoding="utf-8",
+        )
         print("[RAG] regression checks passed.")
         return
 
@@ -127,6 +154,10 @@ def main(args):
         assert_no_eval_leakage(chunks, strict=strict)
         print("=" * 80)
         print(format_retrieval_debug(query, chunks))
+        if args.enable_template_fallback:
+            fallback = template_fallback_command(query, chunks)
+            if fallback:
+                print(f"\n[RAG] template fallback used:\n{fallback}")
         print("\n[RAG] prompt:\n")
         print(build_rag_prompt(query, chunks))
         print("\n[RAG] final answer preview:\n")
@@ -143,4 +174,5 @@ if __name__ == "__main__":
     parser.add_argument("--rag-corpus", dest="rag_corpus", default=None, help="Comma-separated corpus, e.g. train,rag_docs or train,val,rag_docs.")
     parser.add_argument("--sanity", action="store_true", help="Run retrieval leakage and EX3300 sanity checks.")
     parser.add_argument("--regression", action="store_true", help="Run command-aware retrieval regression checks.")
+    parser.add_argument("--enable-template-fallback", action="store_true", help="Show deterministic fallback output for high-confidence command mappings.")
     main(parser.parse_args())
