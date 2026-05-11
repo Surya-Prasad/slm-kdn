@@ -53,6 +53,31 @@ python src/infer.py \
 RAG settings live in `config.yaml` under `rag`. Set `--rebuild` or `--rebuild_rag` after changing files in
 `rag-doc/`; the index also rebuilds automatically when source files or chunking settings change.
 
+## Final Architecture: Semantic RAG Micro-KDN
+The final research path treats the fine-tuned Llama-3-8B adapter as a semantic intent parser, not a free-form CLI generator. With `--semantic_rag`, the model is prompted to output strict JSON only:
+```json
+{"action":"...","domain":"...","sub_domain":"...","parameters":{}}
+```
+
+The local command-context store then retrieves command metadata: template, operational/configuration mode, allowed parameters, validation rules, and commit behavior. Python assembles the final Junos CLI deterministically, and guardrails clean up commit handling so operational commands such as `show`, `clear`, `request`, `ping`, `traceroute`, and `monitor` never receive `commit`.
+
+The older `--use_rag` path is retained as a baseline for comparison, but `--semantic_rag` is the final Semantic RAG Micro-KDN evaluation path.
+
+Build the local command knowledge store from train/val only:
+```bash
+python scripts/build_perfect_datastore_v2.py
+```
+
+Run semantic RAG inference and evaluation:
+```bash
+scripts/run_semantic_rag_eval.sh
+```
+
+Analyze semantic RAG failures:
+```bash
+python scripts/analyze_semantic_rag_errors.py
+```
+
 ## Notes
 - Dataset: `Smarneh/NIT` via HuggingFace `datasets`.
 - Prompt modes: `intent_only`, `intent_with_context`.

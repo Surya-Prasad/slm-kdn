@@ -7,14 +7,13 @@ from peft import PeftModel
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from command_context import retrieve_command_context, should_commit, validate_context
+from guardrails import apply_command_guardrails
 from preprocess import build_prompt
 from rag import apply_rag_corpus, assert_no_eval_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index, template_fallback_command
 from rag_store import retrieve_template
+from semantic_parser import ALLOWED_ACTIONS, REQUIRED_JSON_KEYS, parse_semantic_json as semantic_parse_json, semantic_prompt
 from utils import load_config, read_jsonl, write_jsonl
-
-
-REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
-ALLOWED_ACTIONS = {"set", "delete", "show"}
 
 
 def clean(s):
@@ -34,44 +33,8 @@ def clean(s):
 
 
 def parse_semantic_json(raw: str):
-    """Parse potentially noisy model output into a semantic JSON object with safe type normalization."""
-    errors = []
-    try:
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ValueError("no_json_object_found")
-
-        candidate = raw[start : end + 1]
-        parsed = json.loads(candidate)
-
-        if not isinstance(parsed, dict):
-            raise ValueError("json_not_object")
-
-        missing = REQUIRED_JSON_KEYS - set(parsed.keys())
-        if missing:
-            raise ValueError(f"missing_keys:{','.join(sorted(missing))}")
-
-        if not isinstance(parsed.get("parameters"), dict):
-            raise ValueError("parameters_not_object")
-
-        if parsed.get("action") not in ALLOWED_ACTIONS:
-            errors.append("invalid_enum_action")
-
-        params = parsed["parameters"]
-        for key in ("vlan_id", "unit"):
-            if key in params and params[key] is not None:
-                try:
-                    params[key] = int(params[key])
-                except (TypeError, ValueError):
-                    params[key] = None
-                    errors.append(f"invalid_type_{key}")
-
-        error_str = ";".join(errors) if errors else None
-        return parsed, error_str
-
-    except Exception as exc:  # robust boundary for hallucinated formatting
-        return None, str(exc)
+    """Backward-compatible wrapper for the semantic parser."""
+    return semantic_parse_json(raw)
 
 
 def assemble_command(parsed):
@@ -97,6 +60,25 @@ def assemble_command(parsed):
     return command, None
 
 
+def assemble_command_from_context(parsed, context):
+    if not context.get("found"):
+        return "", str(context.get("reason", "template_not_found")), False, []
+
+    params = dict(context.get("default_params", {}))
+    params.update(dict(parsed.get("parameters", {})))
+    template = str(context.get("template", "")).strip()
+    try:
+        command = template.format(**params).strip()
+    except KeyError as exc:
+        return "", f"missing_parameter:{str(exc).strip(chr(39))}", False, []
+
+    commit_added = should_commit(parsed, context)
+    if commit_added:
+        command = f"{command}\ncommit"
+    command, guardrails_applied = apply_command_guardrails(command, parsed, context)
+    return command, None, "\\ncommit" in command or command.endswith("\ncommit"), guardrails_applied
+
+
 def clean_answer(s):
     return re.sub(r"\s+", " ", s.strip())
 
@@ -104,7 +86,7 @@ def main(a):
     c=load_config(a.config); t=c['training']; ic=c['inference']
     apply_rag_corpus(c, a.rag_corpus)
     batch_size = ic.get("batch_size", 1) 
-    use_rag = a.use_rag or bool(c.get("rag", {}).get("enabled", False))
+    use_rag = (a.use_rag or bool(c.get("rag", {}).get("enabled", False))) and not a.semantic_rag
     rag_index = get_or_build_index(c, rebuild=a.rebuild_rag) if use_rag else None
     eval_mode = Path(a.input_file).name in {"test.jsonl", "clean_test.jsonl", "rag_smoke.jsonl"}
     strict_rag = not c.get("rag", {}).get("include_val_in_rag", False)
@@ -133,7 +115,11 @@ def main(a):
         fallback_commands = []
         for r in batch_rows:
             question = r['intent']
-            if rag_index:
+            if a.semantic_rag:
+                retrievals.append([])
+                prompts.append(semantic_prompt(question, r.get("context", "")))
+                fallback_commands.append(None)
+            elif rag_index:
                 chunks = rag_index.retrieve(question, top_k=int(c.get("rag", {}).get("top_k", 5)))
                 if eval_mode and not a.allow_test_rag:
                     assert_no_eval_leakage(chunks, strict=strict_rag)
@@ -164,25 +150,55 @@ def main(a):
         for j, gen in enumerate(gens):
             text = tok.decode(gen, skip_special_tokens=True)
             raw_pred = text[len(prompts[j]):]
-            pred = clean_answer(raw_pred) if rag_index else clean(raw_pred)
-            if fallback_commands[j]:
-                pred = fallback_commands[j]
-            rag_sources = [
-                {
-                    "source_file": chunk.metadata.get("source_file"),
-                    "page": chunk.metadata.get("page"),
-                    "score": chunk.score,
-                    "dense_score": chunk.dense_score,
-                    "lexical_score": chunk.lexical_score,
+            row = {**batch_rows[j]}
+            if a.semantic_rag:
+                parsed, parse_error = parse_semantic_json(raw_pred)
+                context = retrieve_command_context(parsed or {}) if parsed else {
+                    "found": False,
+                    "reason": "semantic_parse_error",
+                    "template_key": "",
+                    "warnings": [],
+                    "mode": "unknown",
+                    "requires_commit": False,
                 }
-                for chunk in retrievals[j]
-            ]
-            row = {**batch_rows[j], 'prediction': pred}
-            if rag_index:
-                row["rag_sources"] = rag_sources
-                row["rag_context_previews"] = [re.sub(r"\s+", " ", chunk.text)[:300] for chunk in retrievals[j]]
-                row["rag_prompt"] = prompts[j] if a.save_prompts else None
-                row["template_fallback_used"] = bool(fallback_commands[j])
+                warnings = validate_context(parsed or {}, context) if parsed else []
+                pred, assembly_error, commit_added, guardrails_applied = (
+                    assemble_command_from_context(parsed, context) if parsed else ("", "semantic_parse_error", False, [])
+                )
+                row.update(
+                    {
+                        "semantic_json_raw": raw_pred.strip(),
+                        "semantic_json": parsed,
+                        "semantic_parse_error": parse_error,
+                        "command_context": context,
+                        "context_warnings": warnings,
+                        "assembly_error": assembly_error,
+                        "prediction": pred,
+                        "template_key": context.get("template_key", ""),
+                        "commit_added": commit_added,
+                        "guardrails_applied": guardrails_applied,
+                    }
+                )
+            else:
+                pred = clean_answer(raw_pred) if rag_index else clean(raw_pred)
+                if fallback_commands[j]:
+                    pred = fallback_commands[j]
+                rag_sources = [
+                    {
+                        "source_file": chunk.metadata.get("source_file"),
+                        "page": chunk.metadata.get("page"),
+                        "score": chunk.score,
+                        "dense_score": chunk.dense_score,
+                        "lexical_score": chunk.lexical_score,
+                    }
+                    for chunk in retrievals[j]
+                ]
+                row['prediction'] = pred
+                if rag_index:
+                    row["rag_sources"] = rag_sources
+                    row["rag_context_previews"] = [re.sub(r"\s+", " ", chunk.text)[:300] for chunk in retrievals[j]]
+                    row["rag_prompt"] = prompts[j] if a.save_prompts else None
+                    row["template_fallback_used"] = bool(fallback_commands[j])
             out.append(row)
             
     write_jsonl(a.output_file,out)
@@ -236,4 +252,4 @@ def main(a):
             print(f"[RAG] wrote failure analysis to {failure_file}")
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); p.add_argument('--rag-corpus',dest='rag_corpus',default=None); p.add_argument('--failure-file',dest='failure_file',default=None); p.add_argument('--save-prompts',dest='save_prompts',action='store_true'); p.add_argument('--enable-template-fallback',dest='enable_template_fallback',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--semantic_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rebuild_index',action='store_true'); p.add_argument('--rag_debug',action='store_true'); p.add_argument('--allow_test_rag',action='store_true'); p.add_argument('--rag-corpus',dest='rag_corpus',default=None); p.add_argument('--failure-file',dest='failure_file',default=None); p.add_argument('--save-prompts',dest='save_prompts',action='store_true'); p.add_argument('--enable-template-fallback',dest='enable_template_fallback',action='store_true'); args=p.parse_args(); args.rebuild_rag = args.rebuild_rag or args.rebuild_index; main(args)
