@@ -3,6 +3,7 @@ import argparse, json, re, torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 from preprocess import build_prompt
+from rag import build_rag_prompt, format_retrieval_debug, get_or_build_index
 from utils import load_config, read_jsonl, write_jsonl
 from tqdm import tqdm
 
@@ -33,8 +34,13 @@ def clean(s):
         
     return cmd
 
+def clean_answer(s):
+    return re.sub(r"\s+", " ", s.strip())
+
 def main(a):
     c=load_config(a.config); t=c['training']; ic=c['inference']
+    use_rag = a.use_rag or bool(c.get("rag", {}).get("enabled", False))
+    rag_index = get_or_build_index(c, rebuild=a.rebuild_rag) if use_rag else None
     
     tok=AutoTokenizer.from_pretrained(t['base_model'])
     tok.padding_side = 'left' 
@@ -51,7 +57,19 @@ def main(a):
     
     for i in tqdm(range(0, len(rows), batch_size), desc="Batches"):
         batch_rows = rows[i:i+batch_size]
-        prompts = [build_prompt(r['intent'], r.get('context',''), a.mode) for r in batch_rows]
+        prompts = []
+        retrievals = []
+        for r in batch_rows:
+            question = r['intent']
+            if rag_index:
+                chunks = rag_index.retrieve(question, top_k=int(c.get("rag", {}).get("top_k", 5)))
+                retrievals.append(chunks)
+                if a.rag_debug:
+                    print(format_retrieval_debug(question, chunks))
+                prompts.append(build_rag_prompt(question, chunks))
+            else:
+                retrievals.append([])
+                prompts.append(build_prompt(question, r.get('context',''), a.mode))
         
         inputs = tok(prompts, return_tensors='pt', padding=True).to(model.device)
         
@@ -60,10 +78,22 @@ def main(a):
         
         for j, gen in enumerate(gens):
             text = tok.decode(gen, skip_special_tokens=True)
-            pred = clean(text[len(prompts[j]):])
-            out.append({**batch_rows[j], 'prediction': pred})
+            raw_pred = text[len(prompts[j]):]
+            pred = clean_answer(raw_pred) if rag_index else clean(raw_pred)
+            rag_sources = [
+                {
+                    "source_file": chunk.metadata.get("source_file"),
+                    "page": chunk.metadata.get("page"),
+                    "score": chunk.score,
+                }
+                for chunk in retrievals[j]
+            ]
+            row = {**batch_rows[j], 'prediction': pred}
+            if rag_index:
+                row["rag_sources"] = rag_sources
+            out.append(row)
             
     write_jsonl(a.output_file,out)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); main(p.parse_args())
+    p=argparse.ArgumentParser(); p.add_argument('--config',default='config.yaml'); p.add_argument('--input_file',required=True); p.add_argument('--output_file',required=True); p.add_argument('--mode',default='intent_with_context'); p.add_argument('--use_rag',action='store_true'); p.add_argument('--rebuild_rag',action='store_true'); p.add_argument('--rag_debug',action='store_true'); main(p.parse_args())

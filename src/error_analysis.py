@@ -6,7 +6,7 @@ from validate_output import validate
 def classify(r):
     p=r['prediction'].lower(); g=r['target_command'].lower()
     if not p.strip(): return 'hallucinated_command'
-    v=validate(p,r.get('intent',''))
+    v=validate(r)
     if not v['is_valid'] and any('contains_explanation' in e for e in v['errors']): return 'extra_explanation_text'
     if not v['is_valid']: return 'syntax_invalid'
     if p==g: return 'correct'
