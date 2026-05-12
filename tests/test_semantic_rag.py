@@ -6,12 +6,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+SCRIPTS = ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
 
 import rag_store  # noqa: E402
 from command_context import retrieve_command_context  # noqa: E402
 from guardrails import apply_command_guardrails  # noqa: E402
 from infer import assemble_command_from_context, parse_semantic_json  # noqa: E402
 from rag_store import TemplateRecord  # noqa: E402
+from evaluate_semantic_rag import evaluate_rows, expected_frame, failure_stage  # noqa: E402
 
 
 def seed_store():
@@ -313,6 +317,34 @@ def test_interface_and_limit_placeholders_bind_from_intent():
     command, error, _, _ = assemble_command_from_context(parsed, context)
     assert error is None
     assert command == "set ethernet-switching-options secure-access-port interface ge-0/0/15 mac-limit 1 action log\\ncommit"
+
+
+def test_semantic_evaluator_normalizes_literal_newline_exact_match():
+    row = {
+        "intent": "disable ospf",
+        "target_command": "set protocols ospf disable\ncommit",
+        "prediction": "set protocols ospf disable\\ncommit",
+        "semantic_json": {"action": "set", "domain": "protocols", "sub_domain": "ospf", "operation": "disable", "parameters": {}},
+        "semantic_parse_error": None,
+        "command_context": {
+            "found": True,
+            "reason": "",
+            "template_key": "set/protocols/ospf",
+            "template_variant_key": "set/protocols/ospf/disable/plain",
+            "mode": "configuration",
+            "requires_commit": True,
+        },
+        "template_key": "set/protocols/ospf",
+        "assembly_error": None,
+        "guardrails_applied": [],
+        "context_warnings": [],
+    }
+    assert failure_stage(row, expected_frame(row)) == "ok"
+    metrics, failures = evaluate_rows([row])
+    assert metrics["raw_exact_match"] == 0.0
+    assert metrics["normalized_exact_match"] == 1.0
+    assert metrics["exact_match"] == 1.0
+    assert failures == []
 
 
 if __name__ == "__main__":

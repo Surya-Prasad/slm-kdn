@@ -17,6 +17,12 @@ from semantic_parser import ALLOWED_ACTIONS, REQUIRED_JSON_KEYS, parse_semantic_
 from utils import load_config, read_jsonl, write_jsonl
 
 
+def normalize_cli_command(command: str) -> str:
+    text = str(command or "").replace("\\\\n", "\n").replace("\\n", "\n")
+    lines = [re.sub(r"[ \t]+", " ", line.strip()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
 def clean(s):
     s = re.sub(r'^(Command:|Output:)\s*', '', s.strip(), flags=re.I)
     s = s.replace('\n', '\\n')
@@ -211,7 +217,7 @@ def main(a):
     write_jsonl(a.output_file,out)
     if rag_index:
         if eval_mode and out:
-            exact = sum(1 for row in out if row.get("prediction", "").strip() == row.get("target_command", "").strip())
+            exact = sum(1 for row in out if normalize_cli_command(row.get("prediction", "")) == normalize_cli_command(row.get("target_command", "")))
             print(f"[EVAL] exact_match_accuracy: {exact / len(out):.4f} ({exact}/{len(out)})")
         print("[RAG] retrieved chunk counts:")
         for source, count in sorted(source_counts.items()):
@@ -229,7 +235,7 @@ def main(a):
         if eval_mode and failure_file:
             failures = []
             for row in out:
-                exact = row.get("prediction", "").strip() == row.get("target_command", "").strip()
+                exact = normalize_cli_command(row.get("prediction", "")) == normalize_cli_command(row.get("target_command", ""))
                 if exact:
                     continue
                 failures.append(

@@ -16,7 +16,7 @@ for path in (SRC, SCRIPTS):
 from build_perfect_datastore_v2 import command_variant, infer_domain_subdomain, split_commit  # noqa: E402
 from parameter_binding import unresolved_placeholders  # noqa: E402
 from semantic_parser import command_to_semantic_frame  # noqa: E402
-from utils import normalize_command, read_jsonl, tokenize  # noqa: E402
+from utils import read_jsonl, tokenize  # noqa: E402
 from validate_output import extract_entities, validate  # noqa: E402
 
 try:
@@ -37,8 +37,19 @@ def token_f1(pred, gold):
     return 2 * pr * rc / (pr + rc)
 
 
+def normalize_cli_command(command: str) -> str:
+    text = str(command or "")
+    text = text.replace("\\\\n", "\n").replace("\\n", "\n")
+    lines = []
+    for line in text.splitlines():
+        line = re.sub(r"[ \t]+", " ", line.strip())
+        if line:
+            lines.append(line)
+    return "\n".join(lines).strip()
+
+
 def command_has_commit(command):
-    return bool(re.search(r"(?:\\n|\n)commit\s*$", str(command or "").strip(), flags=re.I))
+    return bool(re.search(r"\ncommit\s*$|^commit$", normalize_cli_command(command), flags=re.I))
 
 
 def expected_frame(row):
@@ -78,6 +89,8 @@ def parameter_scores(row):
 
 def failure_stage(row, expected):
     context = row.get("command_context") or {}
+    pred_norm = normalize_cli_command(row.get("prediction", ""))
+    gold_norm = normalize_cli_command(row.get("target_command", ""))
     if row.get("semantic_parse_error"):
         return "semantic_parse_error"
     if context.get("reason") == "template_not_found":
@@ -90,7 +103,7 @@ def failure_stage(row, expected):
         return "missing_parameter"
     if command_has_commit(row.get("prediction", "")) != expected["requires_commit"]:
         return "commit_error"
-    if row.get("prediction", "").strip() != row.get("target_command", "").strip():
+    if pred_norm != gold_norm:
         return "final_command_mismatch"
     return "ok"
 
@@ -158,8 +171,9 @@ def evaluate_rows(rows):
         counts["commit_false_negative_rate"] += float((not command_has_commit(pred)) and expected["requires_commit"])
         counts["guardrail_application_rate"] += float(bool(row.get("guardrails_applied")))
 
-        counts["exact_match"] += float(pred.strip() == gold.strip())
-        counts["normalized_exact_match"] += float(normalize_command(pred) == normalize_command(gold))
+        counts["raw_exact_match"] += float(pred.strip() == gold.strip())
+        counts["normalized_exact_match"] += float(normalize_cli_command(pred) == normalize_cli_command(gold))
+        counts["exact_match"] += float(normalize_cli_command(pred) == normalize_cli_command(gold))
         counts["token_f1"] += token_f1(pred, gold)
         val = validate(row)
         counts["valid_rate"] += float(val["is_valid"])
