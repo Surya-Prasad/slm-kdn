@@ -2,4 +2,45 @@
 
 __pycache__/
 *.pyc
-results/rag_index.pkl
+
+# Local environments
+.venv/
+
+# Generated data and model artifacts
+data/processed/
+data/juniper_templates.json
+*.safetensors
+*.pt
+*.pth
+*.bin
+*.ckpt
+*.gguf
+*.pkl
+checkpoint-*/
+lora_adapter/
+**/checkpoint-*/
+**/lora_adapter/
+adapter_model.safetensors
+optimizer.pt
+rng_state.pth
+training_args.bin
+trainer_state.json
+tokenizer.json
+tokenizer_config.json
+rag_index.pkl
+results/*
+!results/metrics/
+!results/metrics/**
+outputs/
+rag-results/*
+!rag-results/results-rag-*/
+rag-results/results-rag-*/*
+!rag-results/results-rag-*/metrics/
+!rag-results/results-rag-*/metrics/**
+!rag-results/semantic-rag-results-*/
+rag-results/semantic-rag-results-*/*
+!rag-results/semantic-rag-results-*/metrics/
+!rag-results/semantic-rag-results-*/metrics/**
+
+# Keep only evaluation metrics from generated results.
+# Predictions, adapters, RAG indexes, failure logs, and copied Colab runs stay ignored.
