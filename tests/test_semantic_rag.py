@@ -10,7 +10,7 @@ if str(SRC) not in sys.path:
 import rag_store  # noqa: E402
 from command_context import retrieve_command_context  # noqa: E402
 from guardrails import apply_command_guardrails  # noqa: E402
-from infer import parse_semantic_json  # noqa: E402
+from infer import assemble_command_from_context, parse_semantic_json  # noqa: E402
 from rag_store import TemplateRecord  # noqa: E402
 
 
@@ -79,6 +79,36 @@ def seed_store():
                 required_params=["interface"],
                 positive_cues=["interface"],
                 negative_cues=["flag"],
+            ),
+            ("set", "protocols", "sflow", "sample_rate_egress", "plain"): TemplateRecord(
+                action="set",
+                domain="protocols",
+                sub_domain="sflow",
+                operation="sample_rate_egress",
+                template="set protocols sflow sample-rate egress <rate>",
+                mode="configuration",
+                requires_commit=True,
+                required_params=["rate"],
+            ),
+            ("set", "ethernet-switching-options", "secure-access-port", "mac_move_limit", "plain"): TemplateRecord(
+                action="set",
+                domain="ethernet-switching-options",
+                sub_domain="secure-access-port",
+                operation="mac_move_limit",
+                template="set ethernet-switching-options secure-access-port vlan <vlan-name-or-id> mac-move-limit <limit>",
+                mode="configuration",
+                requires_commit=True,
+                required_params=["vlan_id_or_name", "limit"],
+            ),
+            ("set", "ethernet-switching-options", "secure-access-port", "mac_limit_action_log", "plain"): TemplateRecord(
+                action="set",
+                domain="ethernet-switching-options",
+                sub_domain="secure-access-port",
+                operation="mac_limit_action_log",
+                template="set ethernet-switching-options secure-access-port interface <interface-name> mac-limit <limit> action log",
+                mode="configuration",
+                requires_commit=True,
+                required_params=["interface", "limit"],
             ),
         }
     )
@@ -234,6 +264,55 @@ def test_operation_selects_sflow_interface_over_flag():
     context = retrieve_command_context(parsed)
     assert context["operation"] == "interface_enable"
     assert context["template"] == "set protocols sflow interface {interface}"
+
+
+def test_angle_rate_placeholder_binds_from_intent():
+    seed_store()
+    parsed = {
+        "action": "set",
+        "domain": "protocols",
+        "sub_domain": "sflow",
+        "operation": "sample_rate_egress",
+        "parameters": {},
+        "_intent_context": "set the sflow egress sampling rate to 1000",
+    }
+    context = retrieve_command_context(parsed)
+    command, error, commit_added, _ = assemble_command_from_context(parsed, context)
+    assert error is None
+    assert commit_added is True
+    assert command == "set protocols sflow sample-rate egress 1000\\ncommit"
+
+
+def test_vlan_name_or_id_and_limit_placeholders_bind_from_intent():
+    seed_store()
+    parsed = {
+        "action": "set",
+        "domain": "ethernet-switching-options",
+        "sub_domain": "secure-access-port",
+        "operation": "mac_move_limit",
+        "parameters": {},
+        "_intent_context": "set a mac moving limit of 2 on vlan HR",
+    }
+    context = retrieve_command_context(parsed)
+    command, error, _, _ = assemble_command_from_context(parsed, context)
+    assert error is None
+    assert command == "set ethernet-switching-options secure-access-port vlan HR mac-move-limit 2\\ncommit"
+
+
+def test_interface_and_limit_placeholders_bind_from_intent():
+    seed_store()
+    parsed = {
+        "action": "set",
+        "domain": "ethernet-switching-options",
+        "sub_domain": "secure-access-port",
+        "operation": "mac_limit_action_log",
+        "parameters": {},
+        "_intent_context": "put a mac limit of 1 on interface ge-0/0/15 and log the violation",
+    }
+    context = retrieve_command_context(parsed)
+    command, error, _, _ = assemble_command_from_context(parsed, context)
+    assert error is None
+    assert command == "set ethernet-switching-options secure-access-port interface ge-0/0/15 mac-limit 1 action log\\ncommit"
 
 
 if __name__ == "__main__":

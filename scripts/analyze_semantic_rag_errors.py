@@ -13,6 +13,7 @@ for path in (SRC, SCRIPTS):
         sys.path.insert(0, str(path))
 
 from evaluate_semantic_rag import expected_frame, failure_stage  # noqa: E402
+from parameter_binding import unresolved_placeholders  # noqa: E402
 from utils import read_jsonl  # noqa: E402
 
 try:
@@ -28,6 +29,8 @@ def main(args):
     template_not_found_keys = Counter()
     mismatch_templates = Counter()
     stage_examples = {}
+    unresolved_by_name = Counter()
+    unresolved_examples = []
     failures = []
     entity_warning = None
 
@@ -52,6 +55,18 @@ def main(args):
         summary["commit_suppressed_for_operational_action"] += int("commit_suppressed_for_operational_action" in warnings)
         summary["domain_equals_action"] += int(bool(parsed) and parsed.get("domain") == parsed.get("action"))
         summary["sub_domain_gt_4_tokens"] += int(len(str(parsed.get("sub_domain", "")).split()) > 4)
+        unresolved = unresolved_placeholders(row.get("prediction", ""))
+        summary["unresolved_placeholder_count"] += int(bool(unresolved))
+        unresolved_by_name.update(unresolved)
+        if unresolved and len(unresolved_examples) < 10:
+            unresolved_examples.append(
+                {
+                    "intent": row.get("intent", ""),
+                    "prediction": row.get("prediction", ""),
+                    "target_command": row.get("target_command", ""),
+                    "placeholders": unresolved,
+                }
+            )
         if context.get("reason") == "template_not_found":
             template_not_found_keys[parsed_key] += 1
         if stage == "final_command_mismatch":
@@ -87,6 +102,9 @@ def main(args):
         "top_template_not_found_keys": dict(template_not_found_keys.most_common(20)),
         "top_final_command_mismatch_templates": dict(mismatch_templates.most_common(20)),
         "examples_by_failure_stage": stage_examples,
+        "unresolved_placeholder_rate": summary["unresolved_placeholder_count"] / max(len(rows), 1),
+        "unresolved_placeholders_by_name": dict(unresolved_by_name.most_common()),
+        "unresolved_placeholder_examples": unresolved_examples,
     }
     if entity_warning:
         payload["warning"] = entity_warning

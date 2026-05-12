@@ -2,6 +2,8 @@ import json
 import re
 from typing import Any, Dict, Optional, Tuple
 
+from parameter_binding import extract_params_from_text
+
 
 REQUIRED_JSON_KEYS = {"action", "domain", "sub_domain", "parameters"}
 ALLOWED_ACTIONS = {"set", "delete", "show", "clear", "request", "ping", "traceroute", "monitor", "load", "start", "run", "commit"}
@@ -156,7 +158,7 @@ def _infer_domain_subdomain_from_tokens(tokens: list[str]) -> tuple[str, str]:
 
 
 def _extract_command_parameters(command: str) -> Dict[str, Any]:
-    params: Dict[str, Any] = {}
+    params: Dict[str, Any] = extract_params_from_text(command)
     text = str(command or "")
     interface = re.search(r"\b[a-z]{2}-\d+/\d+/\d+\b", text)
     if interface:

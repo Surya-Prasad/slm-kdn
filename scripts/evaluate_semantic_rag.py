@@ -14,6 +14,7 @@ for path in (SRC, SCRIPTS):
         sys.path.insert(0, str(path))
 
 from build_perfect_datastore_v2 import command_variant, infer_domain_subdomain, split_commit  # noqa: E402
+from parameter_binding import unresolved_placeholders  # noqa: E402
 from semantic_parser import command_to_semantic_frame  # noqa: E402
 from utils import normalize_command, read_jsonl, tokenize  # noqa: E402
 from validate_output import extract_entities, validate  # noqa: E402
@@ -151,6 +152,7 @@ def evaluate_rows(rows):
 
         counts["assembly_success_rate"] += float(not row.get("assembly_error"))
         counts["missing_parameter_rate"] += float(str(row.get("assembly_error") or "").startswith("missing_parameter"))
+        counts["unresolved_placeholder_rate"] += float(bool(unresolved_placeholders(pred)))
         counts["commit_decision_accuracy"] += float(command_has_commit(pred) == expected["requires_commit"])
         counts["commit_false_positive_rate"] += float(command_has_commit(pred) and not expected["requires_commit"])
         counts["commit_false_negative_rate"] += float((not command_has_commit(pred)) and expected["requires_commit"])

@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from rag_store import CONFIGURATION_ACTIONS, OPERATIONAL_ACTIONS  # noqa: E402
+from parameter_binding import required_params_from_template  # noqa: E402
 from semantic_parser import command_to_semantic_frame  # noqa: E402
 from utils import read_jsonl  # noqa: E402
 
@@ -95,7 +96,7 @@ def operation_cues(operation: str) -> tuple[list[str], list[str]]:
 
 
 def placeholders(template: str) -> list[str]:
-    return sorted(set(re.findall(r"{([A-Za-z_][A-Za-z0-9_]*)}", template)))
+    return required_params_from_template(template)
 
 
 def parameterize(body: str) -> tuple[str, list[str]]:

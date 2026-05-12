@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from command_context import retrieve_command_context, should_commit, validate_context
 from guardrails import apply_command_guardrails
+from parameter_binding import bind_template, extract_params_from_text
 from preprocess import build_prompt
 from rag import apply_rag_corpus, assert_no_eval_leakage, build_rag_prompt, format_retrieval_debug, get_or_build_index, template_fallback_command
 from rag_store import retrieve_template
@@ -64,13 +65,15 @@ def assemble_command_from_context(parsed, context):
     if not context.get("found"):
         return "", str(context.get("reason", "template_not_found")), False, []
 
+    intent_context = str(parsed.get("_intent_context", ""))
     params = dict(context.get("default_params", {}))
+    params.update(dict(extract_params_from_text(intent_context)))
     params.update(dict(parsed.get("parameters", {})))
     template = str(context.get("template", "")).strip()
-    try:
-        command = template.format(**params).strip()
-    except KeyError as exc:
-        return "", f"missing_parameter:{str(exc).strip(chr(39))}", False, []
+    command, missing = bind_template(template, params, source_text=intent_context)
+    if missing:
+        return "", f"missing_parameter:{','.join(missing)}", False, []
+    command = command.strip()
 
     commit_added = should_commit(parsed, context)
     if commit_added:
